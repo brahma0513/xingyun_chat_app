@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>支付</title>
+    <meta name="description" content="" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=3, minimum-scale=1, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-siteapp" />
+    <script src="static/js/vue.min.js"></script>
+    <script src="static/js/vant.min.js"></script>
+    <script src="static/js/jquery-1.12.1.min.js"></script>
+    <script>
+        if (typeof Vue !== "undefined" && typeof vant !== "undefined") {
+            Vue.use(vant);
+        }
+    </script>
+    <style type="text/css">
+        body { background-color: #F5F5F5; overflow: hidden; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <van-loading v-if="showLoading" size="100px" vertical>加载中...</van-loading>
+    </div>
+    <script>
+        var batchcode     = "<?php echo htmlspecialchars((string)($batchcode ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+        var customer_id   = "<?php echo htmlspecialchars((string)($customer_id ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+        var user_agent      = "<?php echo htmlspecialchars((string)($user_agent ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+        var third_token     = "<?php echo htmlspecialchars((string)($third_token ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+        var callback_path   = "<?php echo htmlspecialchars((string)($callback_path ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+        var order_type      = "<?php echo htmlspecialchars((string)($order_type ?? ''), ENT_QUOTES, 'UTF-8'); ?>";
+
+        var app = new Vue({
+            el: "#app",
+            data: {
+                showLoading: true
+            },
+            created: function () {
+                this.get_pay_order();
+            },
+            methods: {
+                get_pay_order: function () {
+                    var self = this;
+                    $.ajax({
+                        url: "index.php?m=app_pay&a=get_pay_order&third_token=" + encodeURIComponent(third_token) + "&customer_id=" + encodeURIComponent(customer_id) + "&callback_path=" + encodeURIComponent(callback_path),
+                        dataType: "json",
+                        type: "post",
+                        data: { batchcode: batchcode, order_type: order_type },
+                        success: function (res) {
+                            self.showLoading = false;
+                            if (res.errcode == 0) {
+                                res.url = res.url + "&user_agent=" + encodeURIComponent(user_agent) + "&third_token=" + encodeURIComponent(third_token) + "&customer_id=" + encodeURIComponent(customer_id);
+                                self.jump_common_pay(res.url, res.param);
+                            } else {
+                                self.$dialog.alert({
+                                    title: "提示",
+                                    message: res.errmsg
+                                }).then(function () {
+                                    location.href = "index.php?m=app_pay&a=callback&customer_id=" + encodeURIComponent(customer_id) + "&user_agent=" + encodeURIComponent(user_agent) + "&third_token=" + encodeURIComponent(third_token) + "&batchcode=" + encodeURIComponent(batchcode) + "&callback_path=" + encodeURIComponent(callback_path);
+                                });
+                            }
+                        }
+                    });
+                },
+                jump_common_pay: function (url, params) {
+                    var objform = document.createElement("form");
+                    document.body.appendChild(objform);
+                    for (var x in params) {
+                        var opt = document.createElement("input");
+                        opt.type = "hidden";
+                        opt.name = x;
+                        opt.value = params[x];
+                        objform.appendChild(opt);
+                    }
+                    objform.action = url;
+                    objform.method = "POST";
+                    objform.submit();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

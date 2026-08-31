@@ -1,0 +1,3804 @@
+<template>
+  <view class="play-box">
+    <!-- 页面内竖向 swiper + 原生 video（不使用 new_video 组件） -->
+    <view class="play-video-fill">
+      <view class="pvs-player-page">
+        <swiper
+          v-if="!suppressNativeForWebOverlay && episodeList.length"
+          class="pvs-swiper"
+          :indicator-dots="false"
+          :vertical="true"
+          :current="currentEpisodeIndex"
+          :duration="200"
+          :disable-touch="true"
+          @change="onSwiperChange"
+        >
+          <swiper-item
+            v-for="(ep, index) in episodeList"
+            :key="episodeSwiperKey(ep, index)"
+            class="pvs-swiper-item"
+          >
+            <video
+              v-if="shouldRenderVideo(index) && episodePlayUrl(index)"
+              :id="'pvs_video_' + index"
+              :ref="el => setVideoRef(el, index)"
+              class="pvs-video"
+              :src="episodePlayUrl(index)"
+              :controls="false"
+              :muted="mutedForIndex(index)"
+              :autoplay="index === currentEpisodeIndex && !isCurrentEpisodeLocked && !suppressNativeForWebOverlay"
+              :loop="false"
+              :enable-progress-gesture="false"
+              :show-center-play-btn="false"
+              :show-play-btn="false"
+              object-fit="contain"
+              @error="onPvsVideoError(index, $event)"
+              @loadedmetadata="onPvsVideoLoadedMetadata(index, $event)"
+              @loadeddata="onPvsVideoLoadedMetadata(index, $event)"
+              @canplay="onPvsVideoLoadedMetadata(index, $event)"
+              @play="onPvsVideoPlay(index)"
+              @pause="onPvsVideoPause(index)"
+              @timeupdate="onPvsVideoTimeUpdate(index, $event)"
+              @ended="onPvsVideoEnded(index)"
+            ></video>
+            <view
+              v-if="showBuyPop && index === currentEpisodeIndex && shouldRenderVideo(index) && episodePlayUrl(index)"
+              class="pvs-video-buy-cover"
+              @tap.stop="onBuyCoverTap"
+            ></view>
+            <view
+              v-if="!shouldRenderVideo(index) || !episodePlayUrl(index)"
+              class="pvs-video-placeholder"
+            ></view>
+          </swiper-item>
+        </swiper>
+        <!-- nvue：原生 video 会吞触摸，由手势层识别上下滑/单击；改 current 后 swiper 带动画切集 -->
+        <view
+          v-if="!suppressNativeForWebOverlay && episodeList.length && !showBuyPop"
+          class="pvs-video-gesture-layer"
+          @touchstart="onVideoLayerTouchStart"
+          @touchmove="onVideoLayerTouchMove"
+          @touchend="onVideoLayerTouchEnd"
+          @touchcancel="onVideoLayerTouchCancel"
+        >
+          <view
+            v-if="currentVideoPaused && !showUnlockEpisodeCta"
+            class="pvs-pause-hit"
+          >
+            <image
+              class="pvs-pause-overlay-img"
+              :src="http_host + '/micro_theatre_two/web/static/images/p-play.png'"
+              mode="aspectFit"
+            ></image>
+          </view>
+        </view>
+        <view
+          v-if="!suppressNativeForWebOverlay && episodeList.length && episodePlayUrl(currentEpisodeIndex) && !showBuyPop"
+          class="pvs-progress-bar-wrap"
+          :style="pvsProgressBarStyle"
+        >
+          <slider
+            class="pvs-progress-slider"
+            :style="pvsProgressSliderStyle"
+            :value="progressValue"
+            min="0"
+            max="100"
+            step="0.1"
+            activeColor="#0FF6EB"
+            backgroundColor="rgba(255, 255, 255, 0.18)"
+            block-color="#0FF6EB"
+            :block-size="10"
+            @changing="onPvsSliderChanging"
+            @change="onPvsSliderChange"
+          ></slider>
+        </view>
+        <view
+          v-if="!suppressNativeForWebOverlay && showUnlockEpisodeCta && !showBuyPop"
+          class="pvs-cover-buy"
+          :style="pvsUnlockBuyWrapStyle"
+        >
+          <view class="pvs-cover-buy-chip" @tap.stop="toggleBuyPop">
+            <text class="pvs-cover-buy-text">解锁当前剧集</text>
+          </view>
+        </view>
+        <view v-if="!suppressNativeForWebOverlay && !showBuyPop" class="pvs-cover-right">
+          <view class="pvs-cover-right-item" @tap.stop="toggleLike">
+            <image
+              v-if="isLike"
+              :src="http_host + '/micro_theatre_two/web/static/images/p-like-on.png'"
+              class="pvs-cover-icon"
+            ></image>
+            <image
+              v-else
+              :src="http_host + '/micro_theatre_two/web/static/images/p-like.png'"
+              class="pvs-cover-icon"
+            ></image>
+            <text class="pvs-cover-num">{{ likeDisplay }}</text>
+          </view>
+          <view class="pvs-cover-right-item" @tap.stop="toggleComment">
+            <image
+              :src="http_host + '/micro_theatre_two/web/static/images/p-chat.png'"
+              class="pvs-cover-icon"
+            ></image>
+            <text class="pvs-cover-num">{{ commentTotal }}</text>
+          </view>
+        </view>
+        <view
+          v-if="!suppressNativeForWebOverlay && !showBuyPop"
+          class="pvs-cover-bottom"
+          :style="pvsBottomBarStyle"
+        >
+          <view class="pvs-cover-movie" @tap.stop="goDramaDetail">
+            <image
+              :src="(dramaInfo && dramaInfo.cover_image) || http_host + '/micro_theatre_two/web/static/images/movie.png'"
+              class="pvs-cover-movie-img"
+            ></image>
+            <text class="pvs-cover-movie-name">{{ (dramaInfo && dramaInfo.name) || "短剧" }}</text>
+            <text class="pvs-cover-movie-arrow">›</text>
+          </view>
+          <view class="pvs-cover-black" @tap.stop="toggleSort">
+            <view class="pvs-cover-info-row">
+              <text class="pvs-cover-info-main">选集·全{{ (dramaInfo && dramaInfo.total_episodes) || (episodeList || []).length }}集·第{{ currentEpisodeIndex + 1 }}集</text>
+              <text class="pvs-cover-info-arrow-up">∧</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="!showComment" class="pvs-top-nav">
+      <view class="pvs-back-btn" @tap.stop="goBack">
+        <text class="pvs-back-icon">‹</text>
+      </view>
+      <view class="pvs-search-bar" @tap.stop="goSearch">
+        <text class="pvs-search-bar-icon">⌕</text>
+        <text class="pvs-search-bar-placeholder" lines="1">{{
+          searchBarPlaceholder
+        }}</text>
+        <view class="pvs-search-bar-divider"></view>
+        <text class="pvs-search-bar-action">搜索</text>
+      </view>
+    </view>
+    <view v-if="pageInitLoading" class="pvs-page-init-loading">
+      <loading-indicator
+        class="pvs-page-init-spinner"
+        animating="true"
+      ></loading-indicator>
+      <text class="pvs-page-init-loading-text">加载中...</text>
+    </view>
+
+    <view v-if="suppressNativeForWebOverlay">
+      <view v-if="showUnlockEpisodeCta" class="buy-tips" :style="pvsUnlockBuyWrapStyle">
+        <view class="pvs-cover-buy-chip" @tap.stop="toggleBuyPop">
+          <text class="buy-tips-text">解锁当前剧集</text>
+        </view>
+      </view>
+      <view class="right-box">
+        <view class="item" @tap.stop="toggleLike">
+          <image
+            v-if="isLike"
+            :src="http_host + '/micro_theatre_two/web/static/images/p-like-on.png'"
+            class="item-icon"
+          ></image>
+          <image
+            v-else
+            :src="http_host + '/micro_theatre_two/web/static/images/p-like.png'"
+            class="item-icon"
+          ></image>
+          <text class="num">{{ likeDisplay }}</text>
+        </view>
+        <view class="item" @tap.stop="toggleComment">
+          <image
+            :src="http_host + '/micro_theatre_two/web/static/images/p-chat.png'"
+            class="item-icon"
+          ></image>
+          <text class="num">{{ commentTotal }}</text>
+        </view>
+      </view>
+      <view class="bottom-box pvs-screen-overlay" :style="pvsBottomBarStyle">
+        <view class="movie movie-row-app" @tap.stop="goDramaDetail">
+          <image
+            :src="(dramaInfo && dramaInfo.cover_image) || http_host + '/micro_theatre_two/web/static/images/movie.png'"
+            class="movie-cover"
+          ></image>
+          <text class="name">{{ (dramaInfo && dramaInfo.name) || "短剧" }}</text>
+          <text class="arrow-right-text">›</text>
+        </view>
+        <view class="black-box">
+          <view class="info info-row-app" @tap.stop="toggleSort">
+            <text class="info-text">选集·全{{ (dramaInfo && dramaInfo.total_episodes) || (episodeList || []).length }}集·第{{ currentEpisodeIndex + 1 }}集</text>
+            <text class="arrow-icon-text">∧</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+    <view
+      v-if="rewardedDebugVisible && showUnlockEpisodeCta"
+      class="pvs-rewarded-mock-col"
+    >
+      <view class="pvs-rewarded-mock-btn" @tap.stop="simulateRewardedCloseEndedTrue">
+        <text class="pvs-rewarded-mock-btn-t">模拟看完(isEnded)</text>
+      </view>
+      <view class="pvs-rewarded-mock-btn pvs-rewarded-mock-btn--muted" @tap.stop="simulateRewardedCloseEndedFalse">
+        <text class="pvs-rewarded-mock-btn-t pvs-rewarded-mock-btn-t-white">模拟中途关</text>
+      </view>
+    </view>
+
+    <view v-if="showComment" class="comment-overlay-stack">
+      <view class="comment-stack-mask" @tap.stop="onCommentPopupClose"></view>
+      <view class="comment-stack-panel">
+        <view class="comment-top-bar">
+          <text class="comment-total-text">{{ commentTotal }}条评论</text>
+          <view class="comment-collapse-hit" @tap.stop="toggleComment">
+            <text class="comment-collapse-arrow">⌃</text>
+          </view>
+        </view>
+        <scroll-view class="comment-scroll" scroll-y>
+          <view
+            v-for="(item, idx) in commentList"
+            :key="item.id != null ? item.id : 'c_' + idx"
+            class="comment-cell"
+          >
+            <view class="comment-user-row">
+              <image
+                class="comment-avatar"
+                :src="commentRowAvatar(item)"
+                mode="aspectFill"
+              ></image>
+              <text class="comment-username">{{ commentRowUserLabel(item) }}</text>
+            </view>
+            <text class="comment-content">{{ commentRowContent(item) }}</text>
+          </view>
+          <view v-if="!commentList.length" class="comment-empty">暂无评论</view>
+        </scroll-view>
+        <view class="comment-input-wrap">
+          <input
+            class="comment-input"
+            v-model="commentDraft"
+            placeholder="我也评论一番!!"
+            confirm-type="send"
+            @confirm="submitComment"
+          />
+          <view class="comment-send-hit" @tap.stop="submitComment">
+            <text class="comment-send-btn">发送</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="showSort" class="pvs-popup-root">
+      <view class="pvs-popup-mask" @tap.stop="toggleSort"></view>
+      <view class="pvs-popup-panel pvs-popup-panel-bottom">
+        <view class="pvs-popup-inner">
+          <view class="title-box title-box-border">
+            <view class="sort-header sort-header-row">
+              <view class="sort-header-main sort-header-main-row" @tap.stop="goDramaDetail">
+              <image
+                :src="sortHeaderInfo.cover"
+                class="sort-header-cover"
+                mode="aspectFill"
+              ></image>
+              <view class="sort-header-text">
+                  <text class="sort-title">{{ sortHeaderInfo.title }}</text>
+                  <text class="sort-subtitle">{{ sortHeaderInfo.subtitle }}</text>
+              </view>
+            </view>
+              <view class="sort-header-arrow sort-header-arrow-box">
+                <text class="arrow-icon-nvue-dark">›</text>
+            </view>
+          </view>
+        </view>
+          <scroll-view class="sort-box sort-box-scroll" scroll-y="true">
+          <view class="segment-row" v-if="(episodeSegments || []).length > 1">
+            <view
+              class="segment-item"
+              v-for="(seg, idx) in episodeSegments"
+              :key="seg.label"
+                :class="idx === currentSegmentIndex ? 'segment-item-active' : ''"
+                @tap.stop="changeSegment(idx)"
+            >
+                <text
+                  class="segment-item-text"
+                  :class="idx === currentSegmentIndex ? 'segment-item-text-active' : ''"
+                >{{ seg.label }}</text>
+            </view>
+          </view>
+            <view class="episode-num-wrap">
+          <view
+            class="num"
+            v-for="(item, index) in visibleEpisodes"
+                :key="item.id != null ? item.id : 'ep_' + index"
+                :class="[
+                  Number(item.episode_order || index + 1) - 1 === currentEpisodeIndex ? 'num-active' : '',
+                  (index + 1) % 6 === 0 ? 'num-row-end' : '',
+                ]"
+                @tap.stop="handleSortEpisodeTap(item)"
+              >
+                <text class="num-text">{{ item.episode_order || index + 1 }}</text>
+            <image
+              v-if="episodeItemShowsLockIcon(item, index)"
+                  :src="http_host + '/micro_theatre_two/web/static/images/lock2.png'"
+              class="vip-tag"
+            ></image>
+          </view>
+        </view>
+          </scroll-view>
+      </view>
+      </view>
+    </view>
+
+    <!-- 购买半屏：根节点纵向 flex，上/下各 flex:1（勿再套 pvs-popup-panel 的 absolute，否则易整屏白） -->
+    <view v-if="showBuyPop" class="pvs-popup-root pvs-popup-root-buy">
+      <view class="pvs-popup-buy-dim" @tap.stop="closeBuyPop"></view>
+      <view class="pvs-popup-panel-buy">
+      <buyMovie
+        :drama-id="dramaId"
+        :drama-info="dramaInfo"
+        :episode-list="episodeList"
+        :free-episode-count="freeEpisodeCount"
+        :pay-ways="payWays"
+          :pay-return-path="buyMoviePayReturnPath"
+          :unlock-countdown-small="true"
+        :auto-unlock-seconds="autoUnlockSeconds"
+        :current-episode="buyNum || currentEpisodeIndex + 1"
+        :current-time="currentTime"
+        :force-single-episode="!!buyNum"
+        :start-with-pay-way="true"
+        :auto-ad-navigate-seconds="15"
+        @close="closeBuyPop"
+        @purchase-success="handlePurchaseSuccess"
+        @submit="handleBuySubmit"
+      ></buyMovie>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script>
+import url from "@/utils/request.js";
+import store from "@/store";
+import buyMovie from "@/micro_theatre_two/components/buyMovie/buyMovie.vue";
+import * as globalData from "@/utils/config";
+import { consumePlayVideoSimplePayResume } from "@/micro_theatre_two/utils/pay_return_resume.js";
+
+function getMtUserId() {
+  const u = store.state.vuex_user;
+  return (u && u.user_id) || 0;
+}
+
+// 兼容本页原有 request({ url, method, data }) 调用风格
+function request(config = {}) {
+  const reqUrl = config.url || "";
+  const reqMethod = (config.method || "POST").toUpperCase();
+  const reqData = config.data || {};
+  return url.request(reqUrl, reqData, reqMethod);
+}
+
+/** 临时：为 true 时始终不渲染原生 video（仅调 UI）；发布前改为 false */
+const TEMP_DISABLE_NATIVE_VIDEO = false;
+
+export default {
+  components: {
+    buyMovie,
+  },
+  data() {
+    const apiBase = (() => {
+      const u =
+        this.vuex_apiUrl != null && this.vuex_apiUrl !== ""
+          ? this.vuex_apiUrl
+          : globalData.apiUrl || "";
+      return String(u).replace(/\/+$/, "");
+    })();
+    return {
+      tempDisableNativeVideo: TEMP_DISABLE_NATIVE_VIDEO,
+      customer_id: this.vuex_customer_id || globalData.customer_id || 0,
+      http_host: apiBase,
+      dramaId: "",
+      // 如果通过链接参数 buy_num 指定了要购买的集数（从 1 开始），则直接走该集的购买流程
+      buyNum: null,
+      // 弹窗 & 状态
+      showComment: false,
+      showSort: false,
+      isAutoChange: true,
+      isLike: false,
+      showBuyPop: false,
+      /** 打开购买弹窗时写入，供 pay-return-path 使用，避免 nvue/异步下 currentEpisodeIndex 与集序不一致导致回跳成第 1 集 */
+      payReturnEpisodeOrderForBridge: null,
+      trialExhaustedEpisodes: {},
+      sortHeaderInfo: {
+        cover: apiBase + "/micro_theatre_two/web/static/images/movie.png",
+        title: "短剧标题",
+        subtitle: "短剧简介",
+      },
+      initialEpisodeIndex: 0,
+      currentEpisodeIndex: 0,
+      /** 程序改 current 触发的 @change 与 commitEpisodeSwitch 重复，跳过一次 */
+      _pvsSkipSwiperChangeOnce: false,
+      // 通过观看广告临时解锁的剧集（仅在本次停留期间生效）
+      adUnlockedEpisodes: {},
+      // 当广告解锁事件比剧集列表更早到达时，先暂存待解锁的集数
+      pendingAdUnlockEpisode: null,
+      // 当前播放进度（秒），用于点击“观看广告解锁”时回传给广告页
+      currentTime: 0,
+      // 广告解锁返回后，用于恢复当前集播放进度
+      resumeTime: 0,
+      // 如果广告解锁时视频列表还没加载完成，先暂存“待恢复的时间点”
+      pendingAdUnlockResumeTime: 0,
+      dramaInfo: {
+        id: null,
+        name: "",
+        cover_image: "",
+        freeTimeProportion: "10%",
+        favorite_count: 0,
+      },
+      // 完整剧集列表（带 episode_order / video_url 等字段），供选集弹窗和购买弹窗使用
+      episodeList: [],
+      videoList: [],
+      commentTotal: 0,
+      commentDraft: "",
+      commentList: [],
+      // 支付方式与自动解锁秒数（后续可通过接口动态下发）
+      payWays: [],
+      autoUnlockSeconds: 3,
+      // 选集弹窗分段分页索引（1-20 / 21-40 / ...）
+      currentSegmentIndex: 0,
+      // 从其它页面跳转进来时：是否需要自动打开选集弹窗并定位到对应集数
+      pendingOpenSortEpisode: null,
+      popupPageSize: 20,
+      // episode_list 接口返回的 count（全集条数），用于选集分段标签；未返回前为 0
+      episodeTotalCount: 0,
+      // 当前弹窗展示的剧集（当前分段页）
+      popupEpisodeList: [],
+      // 已加载的页缓存：{ [page:number]: episode[] }
+      episodePageCache: {},
+      // 购买状态：整剧/已购单集（按 episode_order）
+      isWholeDramaPurchased: false,
+      purchasedEpisodes: {},
+      // VIP 状态：用于“会员免费观看”放行
+      vipStatus: 0,
+      vipLevelId: 0,
+      vipLevelName: "",
+      // 防止同一集反复上报观看记录
+      lastWatchLogKey: "",
+      // —— 激励：有 adpid + SDK 则走真实 onClose(isEnded)；勿再默认写死成功（仅 ad_mock 等可模拟）——
+      adUnlockInFlight: false,
+      adUnlockMockEnabled: false,
+      adUnlockPreferAdvertPage: false,
+      adUnlockRandomModeRoute: false,
+      adUnlockRewardedWeightRoute: null,
+      rewardedSimulateMode: "",
+      /** index_data.get_ad_setting → data.ad_setting（对象；兼容旧版 JSON 字符串） */
+      adSetting: {},
+      /** 与 task.vue 一致：缓存激励实例、onLoad 标记 */
+      _rewardedVideoAdUnlock: null,
+      _isRewardedUnlockLoaded: false,
+      /** 以下参考 play_video.nvue 原生 swiper+video */
+      videoContexts: {},
+      videoRefs: {},
+      touchStartY: 0,
+      touchStartX: 0,
+      touchMoveY: 0,
+      isTouchMoving: false,
+      screenHeight: 0,
+      swipeThreshold: 50,
+      tapThreshold: 14,
+      currentVideoPaused: false,
+      isSwitching: false,
+      /** 进度条（原 new_video 内嵌；swiper+video 后需在页面自建） */
+      videoDuration: 0,
+      progressValue: 0,
+      isSeeking: false,
+      viewportWidth: 0,
+      /** nvue 下 timeupdate 常 duration=0，用 metadata 与各集缓存补全 */
+      pvsEpisodeDurationCache: {},
+      _pvsSeekingReleaseTimer: null,
+      _pvsProgressPollTimer: null,
+      /** 评论/选集弹窗打开前缓存，关闭且未切集时恢复进度 */
+      pvsPlaybackSnapshot: null,
+      pageInitLoading: true,
+    };
+  },
+  computed: {
+    /** 评论/选集/购买弹窗打开时卸载 swiper+video，改用浮层 UI */
+    suppressNativeForWebOverlay() {
+      if (TEMP_DISABLE_NATIVE_VIDEO) {
+        return true;
+      }
+      return !!(this.showComment || this.showSort || this.showBuyPop);
+    },
+    /** 评论/选集弹窗：隐藏进度条与底栏等，video 继续播放在弹窗半透明遮罩后 */
+    pvsPlayerChromeHidden() {
+      return !!(this.showComment || this.showSort);
+    },
+    searchBarPlaceholder() {
+      const name = (this.dramaInfo && this.dramaInfo.name) || "";
+      const text = String(name || "").trim();
+      return text || "搜索短剧";
+    },
+    likeDisplay() {
+      const info = this.dramaInfo || {};
+      const num = Number(
+        info.like_count != null ? info.like_count : info.favorite_count,
+      );
+      if (!Number.isFinite(num)) return 0;
+      if (num >= 10000) {
+        return (num / 10000).toFixed(1).replace(/\.0$/, "") + "万";
+      }
+      return num;
+    },
+    /** 已取消「前 N 集免费」，固定为 0（仅已购/广告解锁等可完整观看） */
+    freeEpisodeCount() {
+      return 0;
+    },
+    /** 支付完成回跳当前播放页（与 onLoad 约定 id + num 一致），避免误回剧详 */
+    buyMoviePayReturnPath() {
+      const id = String(
+        this.dramaId || (this.dramaInfo && this.dramaInfo.id) || "",
+      ).trim();
+      if (!id) return "";
+      const bridge = this.payReturnEpisodeOrderForBridge;
+      const epNum =
+        bridge != null && Number(bridge) > 0
+          ? Math.floor(Number(bridge))
+          : this.resolveEpisodeOrderForPayUrl();
+      return (
+        "/micro_theatre_two/pages/play_video_simple/play_video_simple?id=" +
+        encodeURIComponent(id) +
+        "&num=" +
+        encodeURIComponent(String(epNum))
+      );
+    },
+    trialRatio() {
+      return this.parseTrialRatio(
+        this.dramaInfo && this.dramaInfo.freeTimeProportion,
+      );
+    },
+    /** fee_type：1 免费整集；2 收费（与后台剧集编辑一致）。兼容 is_charged：2=免费，1=收费 */
+    isCurrentEpisodeFree() {
+      const ep = this.episodeList && this.episodeList[this.currentEpisodeIndex];
+      if (!ep || typeof ep !== "object") return false;
+      const ft = Number(ep.fee_type);
+      if (ft === 1) return true;
+      if (ft === 2) return false;
+      const ic = Number(ep.is_charged);
+      if (ic === 2) return true;
+      if (ic === 1) return false;
+      return false;
+    },
+    isCurrentEpisodeLocked() {
+      const idx = this.currentEpisodeIndex;
+      console.log(
+        "[play_video_simple] isCurrentEpisodeLocked check: idx=",
+        idx,
+        "vipCanWatchThisDrama=",
+        this.vipCanWatchThisDrama,
+        "adUnlocked=",
+        this.adUnlockedEpisodes[idx],
+        "isFree=",
+        this.isCurrentEpisodeFree,
+        "isWholeDramaPurchased=",
+        this.isWholeDramaPurchased,
+        "isEpisodePurchased=",
+        this.isEpisodePurchased(idx + 1),
+        "trialRatio=",
+        this.trialRatio,
+        "trialExhausted=",
+        this.trialExhaustedEpisodes[idx],
+      );
+      // VIP 可免费观看：直接放行
+      if (this.vipCanWatchThisDrama) return false;
+      // 已通过广告解锁的剧集，本次停留内视为已解锁
+      if (this.adUnlockedEpisodes[idx]) return false;
+      if (this.isCurrentEpisodeFree) return false;
+      if (this.isWholeDramaPurchased) return false;
+      if (this.isEpisodePurchased(idx + 1)) return false;
+      if (this.trialRatio <= 0) return true;
+      return !!this.trialExhaustedEpisodes[idx];
+    },
+    /**
+     * 本集需付费/会员/广告才能看整集时展示「解锁」入口。
+     * 有试看比例时仅在试看耗尽后展示（与 handleTrialLimitReached 写入的 trialExhaustedEpisodes 一致）；
+     * 无试看（trialRatio<=0）时与 isCurrentEpisodeLocked 一致，始终可点解锁。
+     */
+    showUnlockEpisodeCta() {
+      const idx = this.currentEpisodeIndex;
+      if (this.vipCanWatchThisDrama) return false;
+      if (this.adUnlockedEpisodes[idx]) return false;
+      if (this.isCurrentEpisodeFree) return false;
+      if (this.isWholeDramaPurchased) return false;
+      if (this.isEpisodePurchased(idx + 1)) return false;
+      if (this.trialRatio > 0 && !this.trialExhaustedEpisodes[idx])
+        return false;
+      return true;
+    },
+    currentMaxPlayableRatio() {
+      if (this.isCurrentEpisodeFree) return null;
+      if (this.vipCanWatchThisDrama) return null;
+      if (this.adUnlockedEpisodes[this.currentEpisodeIndex]) return null;
+      if (this.isWholeDramaPurchased) return null;
+      if (this.isEpisodePurchased(this.currentEpisodeIndex + 1)) return null;
+      const r = Number(this.trialRatio);
+      if (!Number.isFinite(r) || r <= 0) return null;
+      return this.trialRatio;
+    },
+    /** 试看比例有效（与 new_video 的 normalizedMaxPlayableRatio 一致） */
+    pvsPlaybackTrialActive() {
+      const r = this.currentMaxPlayableRatio;
+      return r != null && Number.isFinite(Number(r)) && Number(r) > 0;
+    },
+    pvsTrialRatio() {
+      return Math.min(Math.max(Number(this.currentMaxPlayableRatio) || 0, 0), 1);
+    },
+    pvsLayoutInset() {
+      const sys = uni.getSystemInfoSync ? uni.getSystemInfoSync() : {};
+      const insets = sys && sys.safeAreaInsets ? sys.safeAreaInsets : {};
+      const safeBottom = Number(insets.bottom);
+      const safe = Number.isFinite(safeBottom) && safeBottom > 0 ? safeBottom : 0;
+      const upx = (rpx) => {
+        try {
+          if (typeof uni.upx2px === "function") {
+            return uni.upx2px(rpx);
+          }
+        } catch (e) {}
+        return rpx / 2;
+      };
+      return { safe, upx };
+    },
+    /** 进度条贴屏幕底（含安全区）；与 object-fit:contain 的视频画面无关 */
+    pvsProgressBarStyle() {
+      const w = Number(this.viewportWidth) || 0;
+      const { safe, upx } = this.pvsLayoutInset;
+      const style = {
+        bottom: safe + upx(64) + 4 + "px",
+        left: "0px",
+        zIndex: 10020,
+      };
+      if (w > 0) {
+        style.width = w + "px";
+      } else {
+        style.right = "0px";
+      }
+      return style;
+    },
+    /** 底栏叠在进度条上方，同一套「距屏幕底」基准 */
+    pvsBottomBarStyle() {
+      const w = Number(this.viewportWidth) || 0;
+      const { safe, upx } = this.pvsLayoutInset;
+      const progressBottomPx = safe + upx(64) + 4;
+      const bottomPx = progressBottomPx + upx(72) + upx(12);
+      const style = {
+        bottom: bottomPx + "px",
+        left: "0px",
+        zIndex: 10000,
+        transform: "translateY(5px)",
+      };
+      if (w > 0) {
+        style.width = w + "px";
+      } else {
+        style.width = "750rpx";
+      }
+      return style;
+    },
+    pvsProgressSliderStyle() {
+      const w = Number(this.viewportWidth) || 0;
+      if (w <= 0) {
+        return { width: "100%" };
+      }
+      let pad = 24;
+      try {
+        if (typeof uni.upx2px === "function") {
+          pad = uni.upx2px(48);
+        }
+      } catch (e) {}
+      const inner = Math.max(120, Math.floor(w - pad));
+      return { width: inner + "px" };
+    },
+    /** 「解锁当前剧集」垂直居中（px，随屏高自适应）；横条 full 宽 */
+    pvsUnlockBuyWrapStyle() {
+      const w = Number(this.viewportWidth) || 0;
+      const h = Number(this.screenHeight) || 0;
+      let chipH = 88;
+      try {
+        if (typeof uni.upx2px === "function") {
+          chipH = uni.upx2px(88);
+        }
+      } catch (e) {}
+      const widthPx = w > 0 ? w : 375;
+      const topPx =
+        h > 0 ? Math.max(0, Math.floor(h / 2 - chipH / 2)) : 200;
+      return {
+        top: topPx + "px",
+        left: "0px",
+        width: widthPx + "px",
+      };
+    },
+    vipCanWatchThisDrama() {
+      // dramaInfo.vip_free: 0/1
+      const vipFree = Number(this.dramaInfo && this.dramaInfo.vip_free);
+      if (vipFree !== 1) return false;
+      if (Number(this.vipStatus) !== 1) return false;
+      const vipLevelId = Number(this.vipLevelId);
+      if (!vipLevelId) return false;
+
+      const raw = String(
+        this.dramaInfo && this.dramaInfo.vip_free_levels
+          ? this.dramaInfo.vip_free_levels
+          : "",
+      );
+      if (!raw) return false;
+
+      // 允许逗号/分号/空格分隔
+      const parts = raw
+        .split(/[,;\\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!parts.length) return false;
+
+      // 先按数字 id 匹配
+      for (let i = 0; i < parts.length; i++) {
+        const n = Number(parts[i]);
+        if (Number.isFinite(n) && n === vipLevelId) return true;
+      }
+
+      // 兼容：如果后台存的是名称（如“白金”），做字符串包含匹配
+      if (this.vipLevelName) {
+        const vipName = String(this.vipLevelName);
+        for (let i = 0; i < parts.length; i++) {
+          if (vipName && vipName.includes(parts[i])) return true;
+        }
+      }
+      return false;
+    },
+    rewardedDebugVisible() {
+      return (
+        this.adUnlockMockEnabled ||
+        this.rewardedSimulateMode === "full" ||
+        this.rewardedSimulateMode === "partial"
+      );
+    },
+    adUnlockRandomEffective() {
+      if (this.adUnlockRandomModeRoute) return true;
+      const d = this.dramaInfo || {};
+      const m = String(
+        d.unlock_mode || d.ad_unlock_mode || d.unlock_ad_mode || "",
+      ).toLowerCase();
+      return m === "random";
+    },
+    adUnlockRewardedProbability() {
+      if (
+        this.adUnlockRewardedWeightRoute != null &&
+        Number.isFinite(this.adUnlockRewardedWeightRoute)
+      ) {
+        return Math.min(1, Math.max(0, this.adUnlockRewardedWeightRoute));
+      }
+      const d = this.dramaInfo || {};
+      const raw =
+        d.unlock_rewarded_weight != null
+          ? d.unlock_rewarded_weight
+          : d.ad_unlock_rewarded_weight;
+      if (raw == null || raw === "") return 0.5;
+      let v = Number(raw);
+      if (!Number.isFinite(v)) return 0.5;
+      if (v > 1) v = v / 100;
+      return Math.min(1, Math.max(0, v));
+    },
+    /** 后台 get_ad_setting：开启且配置了 ad_types 时，由服务端类型 + 可播判定驱动解锁方式 */
+    useRemoteAdSettingUnlock() {
+      const s = this.adSetting || {};
+      if (Number(s.ad_enable) !== 1) return false;
+      return this.normalizeAdTypesFromSetting(s).length > 0;
+    },
+    /** 当前配置里声明的广告类型（未过滤可播性），如 local、tencent_vod */
+    remoteAdTypesDeclared() {
+      const s = this.adSetting || {};
+      if (Number(s.ad_enable) !== 1) return [];
+      return this.normalizeAdTypesFromSetting(s)
+        .map((t) => String(t || "").trim())
+        .filter((t) => t === "local" || t === "tencent_vod");
+    },
+    /** 远程 ad_types 未包含 local 时，禁止 navigateTo advert（避免后台关本地仍跳本地广告页） */
+    localAdUnlockAllowed() {
+      if (!this.useRemoteAdSettingUnlock) return true;
+      return this.remoteAdTypesDeclared.includes("local");
+    },
+    /** 选集标题「全X集」：已加载列表时以最大集序为准，避免计划总集数与已上架不一致 */
+    releasedEpisodeCount() {
+      const list = this.episodeList || [];
+      if (list.length) {
+        const max = list.reduce((m, e) => {
+          const n = Number(e.episode_order);
+          return Number.isFinite(n) && n > 0 ? Math.max(m, Math.floor(n)) : m;
+        }, 0);
+        if (max > 0) return max;
+        return list.length;
+      }
+      return (
+        Number(
+          (this.dramaInfo && this.dramaInfo.total_episodes) ||
+            (this.dramaInfo && this.dramaInfo.episodes_count),
+        ) || 0
+      );
+    },
+    // 将剧集按 20 集一组切段。标签范围以接口 count 为准（未只加载第 1 页时也能显示 1-20/21-40/41-55）；
+    // 已加载条目的最大集序作兜底，避免 count 未写入时无分段。
+    episodeSegments() {
+      const list = this.episodeList || [];
+      const maxInList = list.reduce((m, e) => {
+        const n = Number(e.episode_order);
+        return Number.isFinite(n) && n > 0 ? Math.max(m, Math.floor(n)) : m;
+      }, 0);
+      const apiTotal = Number(this.episodeTotalCount) || 0;
+      const dramaTotal =
+        Number(this.dramaInfo && this.dramaInfo.total_episodes) ||
+        Number(this.dramaInfo && this.dramaInfo.episodes_count) ||
+        0;
+      const total = apiTotal || dramaTotal || maxInList;
+      if (!total) return [];
+      const size = 20;
+      const segments = [];
+      for (let start = 1; start <= total; start += size) {
+        const end = Math.min(start + size - 1, total);
+        segments.push({
+          start,
+          end,
+          label: `${start}-${end}`,
+        });
+      }
+      return segments;
+    },
+    // 当前分段下要展示的剧集：按 episodeSegments 的集序区间从 episodeList 过滤。
+    // 禁止在「某一页接口无数据」时回退到全量列表，否则会出现选中 41-50 却仍显示 1、2 的错位。
+    visibleEpisodes() {
+      const list = this.episodeList || [];
+      const segs = Array.isArray(this.episodeSegments) ? this.episodeSegments : [];
+      if (segs.length > 0) {
+        const rawIdx = Number(this.currentSegmentIndex) || 0;
+        const idx = Math.min(Math.max(0, rawIdx), segs.length - 1);
+        const seg = segs[idx];
+        const start = Number(seg.start) || 0;
+        const end = Number(seg.end) || 0;
+        return list.filter((ep) => {
+          const n = Number(ep.episode_order) || 0;
+          return n >= start && n <= end;
+        });
+      }
+      if (this.popupEpisodeList && this.popupEpisodeList.length > 0) {
+        return this.popupEpisodeList;
+      }
+      return list;
+    },
+    /** 与 play_video.nvue 一致：仅渲染当前/相邻集 video，降低内存 */
+    visibleIndexes() {
+      const idx = Number(this.currentEpisodeIndex) || 0;
+      const list = this.episodeList || [];
+      if (!list.length) return new Set();
+      const indexes = [idx];
+      if (idx > 0) indexes.push(idx - 1);
+      if (idx < list.length - 1) indexes.push(idx + 1);
+      return new Set(indexes);
+    },
+  },
+  watch: {
+    episodeList() {
+      const segs = this.episodeSegments;
+      if (
+        Array.isArray(segs) &&
+        segs.length > 0 &&
+        this.currentSegmentIndex >= segs.length
+      ) {
+        this.currentSegmentIndex = 0;
+      }
+    },
+    showBuyPop(val) {
+      if (!val) this.payReturnEpisodeOrderForBridge = null;
+    },
+    suppressNativeForWebOverlay(val, oldVal) {
+      if (!val && oldVal) {
+        this.$nextTick(() => {
+          this.syncPlayerAfterIndexChange();
+        });
+      }
+    },
+    isCurrentEpisodeLocked(val, oldVal) {
+      if (val) {
+        this.pauseVideo(this.currentEpisodeIndex);
+        this.currentVideoPaused = true;
+      } else if (oldVal && !this.suppressNativeForWebOverlay) {
+        this.$nextTick(() => this.syncPlayerAfterIndexChange());
+      }
+    },
+  },
+  onLoad(res) {
+    try {
+      const sys = uni.getSystemInfoSync && uni.getSystemInfoSync();
+      if (sys && sys.windowHeight) {
+        this.screenHeight = sys.windowHeight;
+      }
+      if (sys && sys.windowWidth) {
+        this.viewportWidth = sys.windowWidth;
+      }
+    } catch (e) {}
+    this.syncMicroTheatreHttpHost();
+    this.getAdSetting();
+    // 兼容 uni-simple-router：优先从 this.$Route.query 取路由参数
+    const query = (this.$Route && this.$Route.query) || res || {};
+
+    // 支持 /pages/play_video_simple/play_video_simple?id=xxx&num=3&buy_num=1
+    this.dramaId = query.drama_id || query.dramaId || query.id || "";
+
+    let rawEpNum = Number(query.num);
+    if (!Number.isFinite(rawEpNum) || rawEpNum <= 0) {
+      const fromPay = consumePlayVideoSimplePayResume(this.dramaId);
+      if (fromPay) rawEpNum = fromPay;
+    }
+    const epNum =
+      Number.isFinite(rawEpNum) && rawEpNum > 0 ? Math.floor(rawEpNum) : 1;
+    const nextIndex = Math.max(0, Math.floor(epNum - 1));
+    this.initialEpisodeIndex = nextIndex;
+    this.currentEpisodeIndex = nextIndex;
+
+    // 是否要求自动打开选集弹窗
+    if (String(query.open_sort || query.openSort || "") === "1") {
+      this.pendingOpenSortEpisode = Math.max(1, Math.floor(epNum));
+    } else {
+      this.pendingOpenSortEpisode = null;
+    }
+
+    // 解析 buy_num，表示“直接购买第几集”（1 开始）
+    if (typeof query.buy_num !== "undefined") {
+      const bn = Number(query.buy_num);
+      this.buyNum = Number.isFinite(bn) && bn > 0 ? Math.floor(bn) : null;
+    } else {
+      this.buyNum = null;
+    }
+
+    this.adUnlockMockEnabled =
+      String(query.ad_mock || query.mock_ad || "") === "1" ||
+      String(query.ad_mock || query.mock_ad || "").toLowerCase() === "true";
+    this.adUnlockPreferAdvertPage =
+      String(query.unlock_via || "").toLowerCase() === "advert" ||
+      String(query.unlock_via || "").toLowerCase() === "local";
+    const um = String(query.unlock_mode || "").toLowerCase();
+    this.adUnlockRandomModeRoute =
+      um === "random" ||
+      String(query.ad_random || "") === "1" ||
+      String(query.ad_random || "").toLowerCase() === "true";
+    const rwq = Number(query.rewarded_weight);
+    this.adUnlockRewardedWeightRoute =
+      Number.isFinite(rwq) && rwq >= 0 && rwq <= 1 ? rwq : null;
+    const rs = String(query.rewarded_simulate || "").toLowerCase();
+    if (["full", "1", "true", "ended"].includes(rs)) {
+      this.rewardedSimulateMode = "full";
+    } else if (["partial", "skip", "0", "false"].includes(rs)) {
+      this.rewardedSimulateMode = "partial";
+    } else {
+      this.rewardedSimulateMode = "";
+    }
+
+    console.log(
+      "[play_video_simple] query:",
+      JSON.stringify(query),
+      "buyNum:",
+      this.buyNum,
+    );
+
+    if (this.dramaId) {
+      this.pageInitLoading = true;
+      this.fetchDramaDetail();
+      this.fetchEpisodeList();
+      this.fetchPurchaseStatus();
+      this.fetchUserVipInfo();
+      this.fetchCommentTotal();
+    } else {
+      this.pageInitLoading = false;
+    }
+    // 监听广告解锁事件（仅在本次停留内有效）
+    uni.$on("ad_unlock_success", this.handleAdUnlockFromAdvert);
+  },
+  onShow() {
+    this.syncMicroTheatreHttpHost();
+    try {
+      const sys = uni.getSystemInfoSync && uni.getSystemInfoSync();
+      if (sys && sys.windowHeight) {
+        this.screenHeight = sys.windowHeight;
+      }
+      if (sys && sys.windowWidth) {
+        this.viewportWidth = sys.windowWidth;
+      }
+    } catch (e) {}
+    // H5 返回时，如果页面被重新创建，优先从全局读取最近一次广告解锁记录
+    try {
+      const app = getApp && getApp();
+      const info = app && app.globalData && app.globalData.last_ad_unlock;
+      if (
+        info &&
+        info.dramaId &&
+        String(info.dramaId) === String(this.dramaId)
+      ) {
+        this.handleAdUnlockFromAdvert(info);
+      }
+    } catch (e) {}
+  },
+  /**
+   * 被其它页盖住（navigateTo）时不会走 onUnload，App 原生 video 仍会继续解码/出声。
+   * 与「推荐/详情」等栈内跳转配合：离开播放页可见区域即暂停，避免用户误以为上一页还在播。
+   */
+  onHide() {
+    this.clearPvsSeekingReleaseTimer();
+    this.stopPvsProgressPoll();
+    try {
+      Object.keys(this.videoContexts || {}).forEach((k) => {
+        const ctx = this.videoContexts[k];
+        if (ctx && typeof ctx.pause === "function") {
+          ctx.pause();
+        }
+      });
+    } catch (e) {}
+    this.currentVideoPaused = true;
+  },
+  onUnload() {
+    this.clearPvsSeekingReleaseTimer();
+    this.stopPvsProgressPoll();
+    try {
+      Object.keys(this.videoContexts || {}).forEach((k) => {
+        const ctx = this.videoContexts[k];
+        if (ctx && typeof ctx.pause === "function") ctx.pause();
+      });
+    } catch (e) {}
+    this.videoContexts = {};
+    this.videoRefs = {};
+    uni.$off("ad_unlock_success", this.handleAdUnlockFromAdvert);
+  },
+  methods: {
+    getAdSetting() {
+      this._adSettingLoadPromise = request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=get_ad_setting&xdebug=xdebug",
+        method: "POST",
+        data: {},
+      })
+        .then((res) => {
+          if (!(res && res.errcode === 0 && res.data)) return;
+          let cfg = res.data.ad_setting;
+          if (typeof cfg === "string") {
+            try {
+              cfg = JSON.parse(cfg);
+            } catch (e) {
+              cfg = {};
+            }
+          }
+          this.adSetting = cfg && typeof cfg === "object" ? cfg : {};
+        })
+        .catch(() => {});
+      return this._adSettingLoadPromise;
+    },
+    /** 试看触发前等待配置，避免 adSetting 仍为空时误判不走远程随机逻辑 */
+    ensureAdSettingLoaded() {
+      if (!this._adSettingLoadPromise) {
+        return this.getAdSetting();
+      }
+      return this._adSettingLoadPromise;
+    },
+    /**
+     * ad_types 规范为数组。兼容：JSON 字符串、英文/中文逗号分隔；无 ad_types 时可用 ad_type 单值（如 tencent_vod）。
+     * 注意：若后台将激励广告位 id 存在 tencent_app_id，getRewardedVideoAdpid 会读取该字段。
+     */
+    normalizeAdTypesFromSetting(s) {
+      if (!s || typeof s !== "object") return [];
+      const src = s.ad_types != null ? s.ad_types : [];
+      let list = [];
+      if (typeof src === "string") {
+        const t = src.trim();
+        if (!t) list = [];
+        else {
+          try {
+            const p = JSON.parse(t);
+            list = Array.isArray(p) ? p.slice() : [];
+          } catch (e) {
+            list = t
+              .split(/[,，]/)
+              .map((x) => String(x).trim())
+              .filter(Boolean);
+          }
+        }
+      } else {
+        list = Array.isArray(src) ? src.slice() : [];
+      }
+      const legacy = String(s.ad_type || "")
+        .trim()
+        .toLowerCase();
+      if (legacy === "tencent_vod" || legacy === "local") {
+        const hit = list.some(
+          (x) =>
+            String(x || "")
+              .trim()
+              .toLowerCase() === legacy,
+        );
+        if (!hit) list.push(legacy);
+      }
+      return list;
+    },
+
+    syncMicroTheatreHttpHost() {
+      const u =
+        this.vuex_apiUrl != null && this.vuex_apiUrl !== ""
+          ? this.vuex_apiUrl
+          : globalData.apiUrl || "";
+      this.http_host = String(u).replace(/\/+$/, "");
+    },
+    getEpisodeVideoUrl(ep) {
+      if (!ep || typeof ep !== "object") return "";
+      const direct = ep.video_url || ep.videoUrl || ep.url || ep.video || "";
+      if (direct && typeof direct === "string") {
+        const s = direct.trim();
+        if (!s) return "";
+        if (/^https?:\/\//i.test(s)) return s;
+        const host = String(this.http_host || "").replace(/\/$/, "");
+        if (!host) return s;
+        if (s.startsWith("/")) return host + s;
+        return host + "/resources/" + s;
+      }
+
+      const filePath = ep.file_path || ep.filePath || ep.path || "";
+      if (filePath && typeof filePath === "string") {
+        const fp = filePath.trim();
+        if (!fp) return "";
+        if (/^https?:\/\//i.test(fp)) return fp;
+        const host = String(this.http_host || "").replace(/\/$/, "");
+        if (!host) return fp;
+        if (fp.startsWith("/")) return host + fp;
+        return host + "/resources/" + fp;
+      }
+      return "";
+    },
+    /* —— 播放区：与 play_video.nvue 对齐的 swiper + video + 手势 —— */
+    episodeSwiperKey(ep, index) {
+      if (ep && ep.id != null) return "ep_" + ep.id;
+      if (ep && ep.episode_id != null) return "epid_" + ep.episode_id;
+      return "idx_" + index;
+    },
+    episodePlayUrl(index) {
+      const i = Number(index);
+      if (!Number.isFinite(i) || i < 0) return "";
+      const urls = this.videoList || [];
+      const ep = (this.episodeList || [])[i];
+      if (urls.length === (this.episodeList || []).length && urls[i]) {
+        return String(urls[i]);
+      }
+      return ep ? this.getEpisodeVideoUrl(ep) : "";
+    },
+    /** 选集格点击：按 episode_order / id 在 episodeList 中找真实下标（勿用 visibleEpisodes 的 v-for index） */
+    resolveEpisodeListIndex(ep) {
+      if (!ep || typeof ep !== "object") return 0;
+      const list = this.episodeList || [];
+      if (!list.length) return 0;
+      const order = Number(ep.episode_order);
+      if (Number.isFinite(order) && order > 0) {
+        for (let i = 0; i < list.length; i++) {
+          if (Number(list[i].episode_order) === order) return i;
+        }
+        return this.normalizeEpisodeIndex(order - 1);
+      }
+      const id = ep.id != null ? ep.id : ep.episode_id;
+      if (id != null && id !== "") {
+        for (let j = 0; j < list.length; j++) {
+          const row = list[j] || {};
+          if (row.id === id || row.episode_id === id) return j;
+        }
+      }
+      return 0;
+    },
+    handleSortEpisodeTap(item) {
+      this.handleEpisodeClick(this.resolveEpisodeListIndex(item));
+    },
+    shouldRenderVideo(index) {
+      return this.visibleIndexes.has(index);
+    },
+    setVideoRef(el, index) {
+      if (el) {
+        this.videoRefs[index] = el;
+        if (!this.videoContexts[index]) {
+          try {
+            const ctx = uni.createVideoContext("pvs_video_" + index, this);
+            if (ctx) this.videoContexts[index] = ctx;
+          } catch (e) {}
+        }
+      }
+    },
+    mutedForIndex(index) {
+      return index !== this.currentEpisodeIndex;
+    },
+    onVideoLayerTouchStart(e) {
+      const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+      if (!touch) return;
+      this.touchStartY = touch.pageY;
+      this.touchStartX = touch.pageX;
+      this.touchMoveY = touch.pageY;
+      this.isTouchMoving = false;
+    },
+    onVideoLayerTouchMove(e) {
+      const touch = e.touches && e.touches[0];
+      if (!touch) return;
+      this.touchMoveY = touch.pageY;
+      const deltaY = touch.pageY - this.touchStartY;
+      const deltaX = touch.pageX - this.touchStartX;
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+        this.isTouchMoving = true;
+      }
+    },
+    onVideoLayerTouchEnd(e) {
+      const touch = e.changedTouches && e.changedTouches[0];
+      if (!touch) {
+        this.isTouchMoving = false;
+        return;
+      }
+      const deltaY = touch.pageY - this.touchStartY;
+      const deltaX = touch.pageX - this.touchStartX;
+      const absY = Math.abs(deltaY);
+      const absX = Math.abs(deltaX);
+      const isTap = absY < this.tapThreshold && absX < this.tapThreshold;
+      if (isTap) {
+        this.toggleCurrentVideoPlayPause();
+        this.isTouchMoving = false;
+        return;
+      }
+      if (absY < this.swipeThreshold || absY <= absX) {
+        this.isTouchMoving = false;
+        return;
+      }
+      const len = (this.episodeList || []).length;
+      if (!len) {
+        this.isTouchMoving = false;
+        return;
+      }
+      const direction = deltaY < 0 ? 1 : -1;
+      const newIndex = this.currentEpisodeIndex + direction;
+      if (newIndex >= 0 && newIndex < len) {
+        const prev = this.currentEpisodeIndex;
+        this.commitEpisodeSwitch(prev, newIndex);
+      }
+      this.isTouchMoving = false;
+    },
+    onVideoLayerTouchCancel() {
+      this.isTouchMoving = false;
+    },
+    toggleCurrentVideoPlayPause() {
+      const idx = this.currentEpisodeIndex;
+      if (!(this.episodeList || []).length) return;
+      if (this.isCurrentEpisodeLocked) return;
+      if (this.currentVideoPaused) {
+        this.playVideo(idx);
+        this.tryUnmuteVideo(idx);
+      } else {
+        this.pauseVideo(idx);
+        this.currentVideoPaused = true;
+      }
+    },
+    switchToIndex(targetIndex) {
+      const prev = this.currentEpisodeIndex;
+      const next = this.normalizeEpisodeIndex(targetIndex);
+      this.commitEpisodeSwitch(prev, next);
+    },
+    waitForVideoContext(index, timeout = 2000) {
+      return new Promise((resolve) => {
+        if (this.videoContexts[index]) {
+          resolve();
+          return;
+        }
+        const startTime = Date.now();
+        const check = () => {
+          if (this.videoContexts[index]) {
+            resolve();
+          } else if (Date.now() - startTime < timeout) {
+            try {
+              const ctx = uni.createVideoContext("pvs_video_" + index, this);
+              if (ctx) {
+                this.videoContexts[index] = ctx;
+                resolve();
+                return;
+              }
+            } catch (e) {}
+            setTimeout(check, 50);
+          } else {
+            resolve();
+          }
+        };
+        check();
+      });
+    },
+    onSwiperChange(e) {
+      if (this._pvsSkipSwiperChangeOnce) {
+        this._pvsSkipSwiperChangeOnce = false;
+        return;
+      }
+      const raw =
+        e && e.detail && e.detail.current != null ? e.detail.current : null;
+      if (raw == null) return;
+      const curIndex = this.normalizeEpisodeIndex(raw);
+      const prevIndex = this.currentEpisodeIndex;
+      if (curIndex === prevIndex) return;
+      this.commitEpisodeSwitch(prevIndex, curIndex);
+    },
+    async commitEpisodeSwitch(prevIndex, targetIndex) {
+      const prev = this.normalizeEpisodeIndex(prevIndex);
+      const curIndex = this.normalizeEpisodeIndex(targetIndex);
+      if (curIndex === prev) return;
+
+      this.clearPvsSeekingReleaseTimer();
+      this.isSeeking = false;
+      if (prev >= 0) {
+        this.pauseVideo(prev);
+        const prevCtx = this.videoContexts[prev];
+        if (prevCtx) {
+          try {
+            prevCtx.seek(0);
+          } catch (err) {}
+        }
+      }
+
+      this._pvsSkipSwiperChangeOnce = true;
+      this.initialEpisodeIndex = curIndex;
+      this.currentEpisodeIndex = curIndex;
+      this.videoDuration = 0;
+      this.progressValue = 0;
+      this.currentTime = 0;
+      const cachedDur = Number(this.pvsEpisodeDurationCache[curIndex]) || 0;
+      if (cachedDur > 0) {
+        this.videoDuration = cachedDur;
+      }
+      this.currentVideoPaused = false;
+
+      await this.$nextTick();
+      await this.waitForVideoContext(curIndex);
+      if (this.isCurrentEpisodeLocked) {
+        this.pauseVideo(curIndex);
+        this.currentVideoPaused = true;
+        this.handleVideoChange(curIndex);
+        this.cleanupInvisibleContexts();
+        return;
+      }
+      this.cleanupInvisibleContexts();
+      this.playVideo(curIndex);
+      this.tryUnmuteVideo(curIndex);
+      this.applyResumeSeek();
+      this.pvsRefreshProgressAfterSwitch(curIndex);
+      this.handleVideoChange(curIndex);
+    },
+    playVideo(index) {
+      const ctx = this.videoContexts[index];
+      if (ctx) {
+        try {
+          ctx.play();
+        } catch (e) {}
+      }
+      if (index === this.currentEpisodeIndex) {
+        this.currentVideoPaused = false;
+        this.startPvsProgressPoll();
+      }
+    },
+    pauseVideo(index) {
+      const ctx = this.videoContexts[index];
+      if (ctx) {
+        try {
+          ctx.pause();
+        } catch (e) {}
+      }
+      if (index === this.currentEpisodeIndex) {
+        this.stopPvsProgressPoll();
+      }
+    },
+    tryUnmuteVideo(index) {
+      const ctx = this.videoContexts[index];
+      if (ctx) {
+        try {
+          ctx.mute(false);
+        } catch (e) {}
+      }
+    },
+    cleanupInvisibleContexts() {
+      const vis = this.visibleIndexes;
+      Object.keys(this.videoContexts || {}).forEach((key) => {
+        const i = parseInt(key, 10);
+        if (!vis.has(i)) {
+          const ctx = this.videoContexts[i];
+          if (ctx) {
+            try {
+              ctx.pause();
+            } catch (e) {}
+          }
+          this.$delete(this.videoContexts, i);
+        }
+      });
+    },
+    onPvsVideoError(index, e) {
+      console.error("[play_video_simple] video error", index, e);
+    },
+    /** 接口若返回单集时长（秒），先写入缓存，缓解 nvue timeupdate 无 duration */
+    pvsPickEpisodeDurationSeconds(row) {
+      if (!row || typeof row !== "object") return 0;
+      const keys = [
+        "video_duration",
+        "videoDuration",
+        "duration",
+        "video_time",
+        "videoTime",
+        "total_time",
+        "length",
+        "seconds",
+      ];
+      for (let k = 0; k < keys.length; k++) {
+        const v = Number(row[keys[k]]);
+        if (Number.isFinite(v) && v > 0) return v;
+      }
+      return 0;
+    },
+    pvsHydrateDurationCacheFromEpisodes(list) {
+      const arr = Array.isArray(list) ? list : [];
+      for (let i = 0; i < arr.length; i++) {
+        const sec = this.pvsPickEpisodeDurationSeconds(arr[i]);
+        if (sec > 0) this.$set(this.pvsEpisodeDurationCache, i, sec);
+      }
+    },
+    parsePvsVideoTiming(e) {
+      let det =
+        e && e.detail && typeof e.detail === "object" ? e.detail : null;
+      if (!det && e && e.target && typeof e.target === "object") {
+        det = e.target;
+      }
+      if (!det && e && typeof e === "object") {
+        det = e;
+      }
+      if (!det || typeof det !== "object") {
+        return { duration: 0, currentTime: 0 };
+      }
+      let duration = Number(
+        det.duration != null ? det.duration : det.videoDuration,
+      );
+      let currentTime = Number(
+        det.currentTime != null ? det.currentTime : det.time,
+      );
+      if (!Number.isFinite(duration)) duration = 0;
+      if (!Number.isFinite(currentTime)) currentTime = 0;
+      return { duration, currentTime };
+    },
+    clearPvsSeekingReleaseTimer() {
+      if (this._pvsSeekingReleaseTimer) {
+        clearTimeout(this._pvsSeekingReleaseTimer);
+        this._pvsSeekingReleaseTimer = null;
+      }
+    },
+    stopPvsProgressPoll() {
+      if (this._pvsProgressPollTimer) {
+        clearInterval(this._pvsProgressPollTimer);
+        this._pvsProgressPollTimer = null;
+      }
+    },
+    startPvsProgressPoll() {
+      this.stopPvsProgressPoll();
+      const vm = this;
+      vm._pvsProgressPollTimer = setInterval(function () {
+        vm.pvsProgressPollTick();
+      }, 400);
+    },
+    /** 从缓存/接口字段解析单集总时长（秒） */
+    pvsGetEpisodeDuration(index) {
+      const idx = Math.floor(Number(index));
+      if (!Number.isFinite(idx) || idx < 0) return 0;
+      let d = Number(this.pvsEpisodeDurationCache[idx]) || 0;
+      if (d <= 0 && idx === this.currentEpisodeIndex) {
+        d = Number(this.videoDuration) || 0;
+      }
+      if (d <= 0) {
+        const ep = this.episodeList && this.episodeList[idx];
+        const fromEp = this.pvsPickEpisodeDurationSeconds(ep);
+        if (fromEp > 0) {
+          d = fromEp;
+          this.$set(this.pvsEpisodeDurationCache, idx, d);
+        }
+      }
+      return d > 0 ? d : 0;
+    },
+    pvsApplyProgress(ct, durationHint) {
+      const idx = this.currentEpisodeIndex;
+      const dHint = Number(durationHint) || 0;
+      const dEff = dHint > 0 ? dHint : this.pvsGetEpisodeDuration(idx);
+      const t = Math.max(0, Number(ct) || 0);
+      if (dEff > 0) {
+        this.videoDuration = dEff;
+        this.$set(this.pvsEpisodeDurationCache, idx, dEff);
+      }
+      this.currentTime = t;
+      if (dEff > 0) {
+        this.progressValue = this.pvsGetClampedProgressValue((t / dEff) * 100);
+      }
+      this.handleProgressChange({
+        index: idx,
+        currentTime: t,
+        duration: dEff,
+      });
+    },
+    pvsRefreshProgressAfterSwitch(index) {
+      const idx = this.normalizeEpisodeIndex(index);
+      const d = this.pvsGetEpisodeDuration(idx);
+      const t = Math.max(
+        0,
+        Number(this.resumeTime) || Number(this.currentTime) || 0,
+      );
+      if (d > 0 && t > 0) {
+        this.pvsApplyProgress(t, d);
+      } else if (d > 0) {
+        this.videoDuration = d;
+      }
+    },
+    pvsProgressPollTick() {
+      if (this.isSeeking || this.currentVideoPaused) return;
+      const idx = this.currentEpisodeIndex;
+      const d = this.pvsGetEpisodeDuration(idx);
+      if (d <= 0) return;
+      const ct = Math.max(0, Number(this.currentTime) || 0);
+      // nvue 常拿不到 timeupdate.duration，仅靠「pct<5%」会中途停更；播放中持续对齐
+      this.pvsApplyProgress(ct, d);
+    },
+    schedulePvsSeekingRelease() {
+      this.clearPvsSeekingReleaseTimer();
+      this._pvsSeekingReleaseTimer = setTimeout(() => {
+        this._pvsSeekingReleaseTimer = null;
+        this.isSeeking = false;
+      }, 1500);
+    },
+    onPvsVideoPlay(index) {
+      if (index !== this.currentEpisodeIndex) return;
+      this.clearPvsSeekingReleaseTimer();
+      this.isSeeking = false;
+      const d = this.pvsGetEpisodeDuration(index);
+      if (d > 0) {
+        this.videoDuration = d;
+        const ct = Math.max(0, Number(this.currentTime) || 0);
+        if (ct > 0) {
+          this.pvsApplyProgress(ct, d);
+        }
+      }
+      this.startPvsProgressPoll();
+    },
+    onPvsVideoPause(index) {
+      if (index !== this.currentEpisodeIndex) return;
+      this.stopPvsProgressPoll();
+    },
+    onPvsVideoLoadedMetadata(index, e) {
+      const { duration, currentTime } = this.parsePvsVideoTiming(e);
+      if (!(duration > 0)) return;
+      this.$set(this.pvsEpisodeDurationCache, index, duration);
+      if (index === this.currentEpisodeIndex) {
+        this.videoDuration = duration;
+        const ct = Math.max(0, Number(currentTime) || Number(this.currentTime) || 0);
+        if (ct > 0) {
+          this.pvsApplyProgress(ct, duration);
+        } else if ((Number(this.progressValue) || 0) < 0.05) {
+          this.pvsApplyProgress(0, duration);
+        }
+      }
+    },
+    onPvsVideoTimeUpdate(index, e) {
+      if (index !== this.currentEpisodeIndex) return;
+      if (this.isSeeking) return;
+      const parsed = this.parsePvsVideoTiming(e);
+      let d = parsed.duration > 0 ? parsed.duration : 0;
+      const ct = parsed.currentTime;
+      if (d > 0) {
+        this.$set(this.pvsEpisodeDurationCache, index, d);
+      } else {
+        d = this.pvsGetEpisodeDuration(index);
+      }
+      let dEff = d > 0 ? d : this.pvsGetEpisodeDuration(index);
+      if (dEff <= 0) {
+        dEff = Number(this.videoDuration) || 0;
+      }
+      if (!dEff) {
+        if (ct > 0) {
+          this.currentTime = ct;
+          this.handleProgressChange({ index, currentTime: ct, duration: 0 });
+        }
+        return;
+      }
+      if (this.pvsIsOverPlaybackLimit(ct, dEff)) {
+        const clampedCt = this.pvsGetClampedCurrentTime(ct, dEff);
+        this.pvsApplyProgress(clampedCt, dEff);
+        this.pauseVideo(index);
+        this.currentVideoPaused = true;
+        this.handleTrialLimitReached({
+          index,
+          currentTime: clampedCt,
+          time: clampedCt,
+        });
+        return;
+      }
+      this.pvsApplyProgress(ct, dEff);
+    },
+    pvsGetClampedProgressValue(value) {
+      const v = Math.min(Math.max(Number(value) || 0, 0), 100);
+      if (!this.pvsPlaybackTrialActive) return v;
+      return Math.min(v, this.pvsTrialRatio * 100);
+    },
+    pvsGetClampedCurrentTime(time, duration) {
+      const t = Math.max(Number(time) || 0, 0);
+      if (!this.pvsPlaybackTrialActive || !duration) return t;
+      const maxT = duration * this.pvsTrialRatio;
+      return Math.min(t, maxT);
+    },
+    pvsIsOverPlaybackLimit(currentTime, duration) {
+      if (!this.pvsPlaybackTrialActive || !duration) return false;
+      const maxT = duration * this.pvsTrialRatio;
+      return currentTime >= Math.max(0, maxT - 0.05);
+    },
+    pvsSliderPickValue(e) {
+      if (e == null) return 0;
+      if (typeof e === "number") return e;
+      if (typeof e === "object" && e.detail != null && e.detail.value != null) {
+        return Number(e.detail.value) || 0;
+      }
+      return Number(e) || 0;
+    },
+    onPvsSliderChanging(e) {
+      if (this.isCurrentEpisodeLocked) return;
+      this.isSeeking = true;
+      this.schedulePvsSeekingRelease();
+      const value = this.pvsSliderPickValue(e);
+      const nextValue = this.pvsGetClampedProgressValue(
+        typeof value === "number" ? value : Number(value) || 0,
+      );
+      this.progressValue = nextValue;
+      const d = Number(this.videoDuration) || 0;
+      if (d) {
+        this.currentTime = this.pvsGetClampedCurrentTime(
+          (nextValue / 100) * d,
+          d,
+        );
+      }
+    },
+    onPvsSliderChange(e) {
+      this.clearPvsSeekingReleaseTimer();
+      if (this.isCurrentEpisodeLocked) {
+        this.isSeeking = false;
+        return;
+      }
+      const value = this.pvsSliderPickValue(e);
+      const rawValue = typeof value === "number" ? value : Number(value) || 0;
+      const nextValue = this.pvsGetClampedProgressValue(rawValue);
+      this.progressValue = nextValue;
+      const d = Number(this.videoDuration) || 0;
+      if (d) {
+        this.currentTime = this.pvsGetClampedCurrentTime(
+          (nextValue / 100) * d,
+          d,
+        );
+      }
+      if (!d) {
+        this.isSeeking = false;
+        return;
+      }
+      const ctx = this.videoContexts[this.currentEpisodeIndex];
+      if (!ctx) {
+        this.isSeeking = false;
+        return;
+      }
+      try {
+        ctx.seek(this.currentTime);
+      } catch (err) {}
+      if (this.pvsIsOverPlaybackLimit(this.currentTime, d)) {
+        this.pauseVideo(this.currentEpisodeIndex);
+        this.currentVideoPaused = true;
+        this.handleTrialLimitReached({
+          index: this.currentEpisodeIndex,
+          currentTime: this.currentTime,
+          time: this.currentTime,
+        });
+      }
+      this.$nextTick(() => {
+        this.isSeeking = false;
+      });
+    },
+    onPvsVideoEnded(index) {
+      if (index !== this.currentEpisodeIndex) return;
+      if (!this.isAutoChange) return;
+      const next = index + 1;
+      if (next < (this.episodeList || []).length) {
+        this.switchToIndex(next);
+      }
+    },
+    pvsSavePlaybackSnapshot() {
+      const idx = this.normalizeEpisodeIndex(this.currentEpisodeIndex);
+      const wasPaused = !!this.currentVideoPaused;
+      try {
+        this.pauseVideo(idx);
+      } catch (e) {}
+      const ct = Math.max(0, Number(this.currentTime) || 0);
+      const d =
+        Number(this.videoDuration) ||
+        Number(this.pvsEpisodeDurationCache[idx]) ||
+        0;
+      let progressValue = Number(this.progressValue);
+      if (!Number.isFinite(progressValue) || progressValue < 0) {
+        progressValue = 0;
+      }
+      if (d > 0 && ct > 0) {
+        progressValue = this.pvsGetClampedProgressValue((ct / d) * 100);
+      }
+      this.pvsPlaybackSnapshot = {
+        idx,
+        currentTime: ct,
+        progressValue,
+        duration: d > 0 ? d : 0,
+        paused: wasPaused,
+      };
+    },
+    pvsApplyPlaybackSnapshot(snap) {
+      if (!snap || typeof snap !== "object") return;
+      const d =
+        Number(snap.duration) ||
+        Number(this.videoDuration) ||
+        Number(this.pvsEpisodeDurationCache[snap.idx]) ||
+        0;
+      if (d > 0) {
+        this.videoDuration = d;
+      }
+      const ct = Math.max(0, Number(snap.currentTime) || 0);
+      this.currentTime = ct;
+      this.resumeTime = ct;
+      if (d > 0) {
+        this.progressValue = this.pvsGetClampedProgressValue((ct / d) * 100);
+      } else if (Number.isFinite(Number(snap.progressValue))) {
+        this.progressValue = Number(snap.progressValue);
+      }
+      this.currentVideoPaused = !!snap.paused;
+    },
+    applyResumeSeek() {
+      const t = Number(this.resumeTime) || 0;
+      if (t <= 0) return;
+      const ctx = this.videoContexts[this.currentEpisodeIndex];
+      const d = Number(this.videoDuration) || 0;
+      const clamped = d ? this.pvsGetClampedCurrentTime(t, d) : t;
+      if (ctx) {
+        try {
+          ctx.seek(clamped);
+        } catch (e) {}
+      }
+      this.pvsApplyProgress(clamped, d);
+      this.resumeTime = 0;
+    },
+    async syncPlayerAfterIndexChange() {
+      if (this.suppressNativeForWebOverlay) return;
+      this.clearPvsSeekingReleaseTimer();
+      this.isSeeking = false;
+      const len = (this.episodeList || []).length;
+      if (!len) return;
+      const idx = this.normalizeEpisodeIndex(this.currentEpisodeIndex);
+      if (idx !== this.currentEpisodeIndex) {
+        this.currentEpisodeIndex = idx;
+      }
+      this.initialEpisodeIndex = idx;
+      await this.$nextTick();
+      await this.waitForVideoContext(idx);
+      if (this.isCurrentEpisodeLocked) {
+        this.pauseVideo(idx);
+        this.currentVideoPaused = true;
+        return;
+      }
+      this.cleanupInvisibleContexts();
+      const shouldPause = !!this.currentVideoPaused;
+      if (shouldPause) {
+        this.pauseVideo(idx);
+        this.currentVideoPaused = true;
+      } else {
+        this.currentVideoPaused = false;
+        this.playVideo(idx);
+        this.tryUnmuteVideo(idx);
+      }
+      this.applyResumeSeek();
+      this.pvsRefreshProgressAfterSwitch(idx);
+      if (shouldPause) {
+        this.pauseVideo(idx);
+        this.currentVideoPaused = true;
+      }
+    },
+    // 自动打开选集弹窗并定位到对应集数（1 开始）
+    async openSortAndSelectEpisode(epNo) {
+      const n = Number(epNo) || 1;
+      const idx = Math.max(0, Math.floor(n - 1));
+      const segIdx = Math.max(0, Math.floor(idx / 20));
+      // #ifdef APP-PLUS
+      this.initialEpisodeIndex = this.normalizeEpisodeIndex(
+        this.currentEpisodeIndex,
+      );
+      // #endif
+      // 先打开弹窗，再拉分段数据；否则 await 卡住/失败时用户会感觉「点了没反应」
+      this.showSort = true;
+      try {
+        await this.changeSegment(segIdx);
+      } catch (e) {
+        console.warn(
+          "[play_video_simple] openSortAndSelectEpisode changeSegment",
+          e,
+        );
+      }
+      this.initialEpisodeIndex = idx;
+      this.currentEpisodeIndex = idx;
+    },
+    // 跳转短剧详情页
+    goBack() {
+      this.pauseVideo(this.currentEpisodeIndex);
+      const pages = getCurrentPages();
+      if (pages && pages.length > 1) {
+        uni.navigateBack({ delta: 1 });
+        return;
+      }
+      uni.redirectTo({
+        url: "/micro_theatre_two/pages/index/index",
+      });
+    },
+    goSearch() {
+      this.pauseVideo(this.currentEpisodeIndex);
+      this.currentVideoPaused = true;
+      uni.navigateTo({
+        url: "/micro_theatre_two/pages/history_search/history_search",
+        fail: (err) => {
+          console.warn("[play_video_simple][goSearch] navigateTo fail", err);
+          this.currentVideoPaused = false;
+          this.$nextTick(() => {
+            this.syncPlayerAfterIndexChange();
+          });
+        },
+      });
+    },
+    goDramaDetail() {
+      // #ifdef APP-PLUS
+      console.log("[play_video_simple][cover-tap] goDramaDetail");
+      // #endif
+      const dramaId = String(
+        this.dramaId || (this.dramaInfo && this.dramaInfo.id) || "",
+      ).trim();
+      if (!dramaId) {
+        uni.showToast({
+          title: "短剧信息异常",
+          icon: "none",
+        });
+        return;
+      }
+      uni.navigateTo({
+        url: `/micro_theatre_two/pages/playlet_info/playlet_info?id=${encodeURIComponent(dramaId)}`,
+      });
+    },
+    // 用户 VIP 信息：用于“会员免费观看”放行
+    fetchUserVipInfo() {
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=user_detail",
+        method: "POST",
+        data: {},
+      })
+        .then((res) => {
+          if (res && res.errcode === 0 && res.data) {
+            const info = res.data || {};
+            const level = info.level || {};
+            this.vipStatus = Number(level.vip_status) === 1 ? 1 : 0;
+            this.vipLevelName = level.level_name
+              ? String(level.level_name)
+              : "";
+            // theatre_user.level_id 通常来自 info.level_id；兜底兼容其它字段命名
+            this.vipLevelId = Number(
+              info.level_id ?? level.level ?? level.id ?? 0,
+            );
+          }
+        })
+        .catch(() => {});
+    },
+    handlePurchaseSuccess() {
+      this.fetchPurchaseStatus();
+      this.$nextTick(() => {
+        this.syncPlayerAfterIndexChange();
+      });
+    },
+    isEpisodePurchased(episodeOrder) {
+      const n = Number(episodeOrder);
+      if (!Number.isFinite(n) || n <= 0) return false;
+      return !!this.purchasedEpisodes[Math.floor(n)];
+    },
+    /**
+     * 与 isCurrentEpisodeFree 一致：fee_type=1 为免费整集不显示锁；fee_type=2 为付费才可能显示锁。
+     * （后台 episodes_save：1=免费，2=付费）
+     */
+    isEpisodeItemFreeForLock(ep) {
+      if (!ep || typeof ep !== "object") return false;
+      const ft = Number(ep.fee_type);
+      if (ft === 1) return true;
+      if (ft === 2) return false;
+      const ic = Number(ep.is_charged);
+      if (ic === 2) return true;
+      if (ic === 1) return false;
+      return false;
+    },
+    /** 选集列表锁标：仅收费集且仍未解锁时显示 */
+    episodeItemShowsLockIcon(item, index) {
+      if (this.isEpisodeItemFreeForLock(item)) return false;
+      const order = Number(item.episode_order || index + 1);
+      if (order <= this.freeEpisodeCount) return false;
+      if (this.vipCanWatchThisDrama) return false;
+      if (this.isEpisodePurchased(order)) return false;
+      const idx = item.episode_order ? Number(item.episode_order) - 1 : index;
+      if (this.adUnlockedEpisodes[idx]) return false;
+      return true;
+    },
+    fetchPurchaseStatus() {
+      request({
+        url: "/micro_theatre_two/web/index.php?m=order_data&a=get_user_purchase_status&xdebug=xdebug",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+        },
+      })
+        .then((res) => {
+          if (res && res.errcode == 0 && res.data) {
+            const d = res.data || {};
+            this.isWholeDramaPurchased =
+              Number(d.is_whole_drama_purchased) === 1;
+            const eps = Array.isArray(d.purchased_episodes)
+              ? d.purchased_episodes
+              : [];
+            const map = {};
+            eps.forEach((v) => {
+              const n = Number(v);
+              if (Number.isFinite(n) && n > 0) map[Math.floor(n)] = true;
+            });
+            this.purchasedEpisodes = map;
+          }
+        })
+        .catch(() => {});
+    },
+    // new_video 上报的播放进度（秒），用于广告解锁回传 resume_time
+    handleProgressChange(payload) {
+      if (!payload || typeof payload !== "object") return;
+      const idx = Number(payload.index);
+      const t = Number(payload.currentTime);
+      if (!Number.isFinite(idx) || idx < 0) return;
+      if (!Number.isFinite(t) || t < 0) return;
+
+      // 只更新当前集的进度，避免临近切集时的数据抖动覆盖
+      if (idx === this.currentEpisodeIndex) {
+        this.currentTime = t;
+      }
+    },
+    // 广告页回传：标记某一集已通过广告解锁，并切换到对应集播放
+    handleAdUnlockFromAdvert(payload) {
+      if (!payload || typeof payload !== "object") return;
+      // 广告解锁成功后关闭“购买/解锁”弹窗，避免返回后仍然遮挡播放
+      this.showBuyPop = false;
+      this.buyNum = null;
+      const epNo = Number(payload.episode) || 1;
+      const resumeTime =
+        Number(payload.resume_time || payload.resumeTime || 0) || 0;
+      // 如果视频列表还没加载好，先记住待解锁的集数，等剧集加载后再处理
+      if (!this.videoList || this.videoList.length === 0) {
+        this.pendingAdUnlockEpisode = epNo;
+        this.pendingAdUnlockResumeTime = resumeTime;
+        return;
+      }
+      const idx = this.normalizeEpisodeIndex(epNo - 1);
+      const vLen = Array.isArray(this.videoList) ? this.videoList.length : 0;
+      if (idx < 0 || idx >= vLen) return;
+      this.$set(this.adUnlockedEpisodes, idx, true);
+      this.initialEpisodeIndex = idx;
+      this.currentEpisodeIndex = idx;
+      // 恢复进度（广告返回后，底层播放器会 seek 到此时间点）
+      this.resumeTime = resumeTime;
+      this.currentTime = resumeTime;
+      this.pendingAdUnlockResumeTime = 0;
+      try {
+        const app = typeof getApp === "function" && getApp();
+        if (app && app.globalData) app.globalData.last_ad_unlock = null;
+      } catch (e) {
+        // ignore
+      }
+      this.$nextTick(() => {
+        this.syncPlayerAfterIndexChange();
+      });
+    },
+
+    /**
+     * uni-ad 激励视频广告位 id（adpid），用于 createRewardedVideoAd。
+     * 兼容后台把激励位 id 放在 tencent_app_id（与 rewarded_adpid 等择一配置即可）。
+     */
+    getRewardedVideoAdpid() {
+      const s = this.adSetting || {};
+      const fromSetting =
+        s.rewarded_adpid ||
+        s.uni_adpid ||
+        s.video_adpid ||
+        s.adpid ||
+        s.tencent_vod_adpid ||
+        s.tencent_app_id ||
+        s.tencent_rewarded_id ||
+        s.gdt_rewarded_id ||
+        s.gdt_reward_video_id ||
+        s.incentive_adpid ||
+        s.jili_adpid ||
+        "";
+      const d = this.dramaInfo || {};
+      const raw =
+        (fromSetting && String(fromSetting).trim()) ||
+        d.adpid ||
+        d.rewarded_adpid ||
+        d.uni_adpid ||
+        d.video_adpid ||
+        d.tencent_app_id ||
+        d.reward_video_ad_id;
+      if (raw == null || String(raw).trim() === "") return "";
+      return String(raw).trim();
+    },
+    /**
+     * 可播类型：local=仅当允许本地广告页；tencent_vod=激励（当前未打通 SDK 时仍参与随机，走直接解锁）
+     */
+    getPlayableAdUnlockTypes() {
+      const declared = this.remoteAdTypesDeclared;
+      const out = [];
+      for (let i = 0; i < declared.length; i++) {
+        const t = declared[i];
+        if (t === "local" && this.localAdUnlockAllowed) {
+          if (!out.includes("local")) out.push("local");
+          continue;
+        }
+        if (t === "tencent_vod") {
+          if (!out.includes("tencent_vod")) out.push("tencent_vod");
+        }
+      }
+      return out;
+    },
+    /**
+     * 按 ad_setting 在可播类型间随机；仅 tencent_vod 时直接激励解锁；绝不因「无可播」强开本地页
+     */
+    openAdUnlockByRemoteSetting(episodeIndex, resumeTime) {
+      const declared = this.remoteAdTypesDeclared;
+      const playable = this.getPlayableAdUnlockTypes();
+      if (playable.length === 0) {
+        if (declared.includes("tencent_vod")) {
+          this.openInlineRewardedUnlock(episodeIndex, resumeTime);
+          return;
+        }
+        if (declared.includes("local") && this.localAdUnlockAllowed) {
+          this.openAdUnlockPage(episodeIndex, resumeTime);
+          return;
+        }
+        uni.showToast({
+          icon: "none",
+          title: "未配置可用广告方式",
+        });
+        return;
+      }
+      if (playable.length === 1) {
+        if (playable[0] === "local") {
+          this.openAdUnlockPage(episodeIndex, resumeTime);
+        } else {
+          this.openInlineRewardedUnlock(episodeIndex, resumeTime);
+        }
+        return;
+      }
+      const pick = playable[Math.floor(Math.random() * playable.length)];
+      if (pick === "local") {
+        this.openAdUnlockPage(episodeIndex, resumeTime);
+      } else {
+        this.openInlineRewardedUnlock(episodeIndex, resumeTime);
+      }
+    },
+    unlockUserIdForCallback() {
+      const id = getMtUserId();
+      return id != null && id !== "" ? id : "";
+    },
+    buildRewardedCloseContext(episodeIndex, resumeTimeSec = 0) {
+      const idx = this.normalizeEpisodeIndex(episodeIndex);
+      const ep = (this.episodeList && this.episodeList[idx]) || {};
+      const dramaIdForAd =
+        this.dramaId ||
+        ep.drama_id ||
+        (this.dramaInfo && this.dramaInfo.id) ||
+        "";
+      const episodeOrder = Math.max(
+        1,
+        Number(ep.episode_order != null ? ep.episode_order : idx + 1) || 1,
+      );
+      const resumeSec = Math.max(0, Math.floor(Number(resumeTimeSec) || 0));
+      const dramaIdNum = Number(dramaIdForAd) || 0;
+      return {
+        idx,
+        resumeSec,
+        dramaIdForAd,
+        episodeOrder,
+        dramaIdNum,
+      };
+    },
+    handleRewardedVideoCloseDetail(detail, ctx) {
+      const isEnded = !!(detail && detail.isEnded);
+      if (isEnded) {
+        request({
+          url: "/micro_theatre_two/web/index.php?m=index_data&a=advert_watch_log_add",
+          method: "POST",
+          data: {
+            drama_id: ctx.dramaIdNum,
+            episode: ctx.episodeOrder,
+            watch_seconds: 1,
+            ad_video_id: 0,
+            play_type: "rewarded",
+          },
+        }).catch(() => {});
+        const payload = {
+          dramaId: String(ctx.dramaIdForAd || ""),
+          episode: ctx.episodeOrder,
+          watchSeconds: 1,
+          resume_time: ctx.resumeSec,
+        };
+        try {
+          const app = typeof getApp === "function" && getApp();
+          if (app) {
+            app.globalData = app.globalData || {};
+            app.globalData.last_ad_unlock = {
+              ...payload,
+              ts: Date.now(),
+            };
+          }
+        } catch (e) {
+          // ignore
+        }
+        this.adUnlockInFlight = false;
+        this.handleAdUnlockFromAdvert(payload);
+      } else {
+        this.adUnlockInFlight = false;
+        uni.showToast({
+          icon: "none",
+          title: "未完整观看，未解锁（isEnded=false）",
+        });
+      }
+    },
+    runSimulatedRewardedClose(episodeIndex, resumeTimeSec, isEnded) {
+      const detail = { isEnded: !!isEnded };
+      const ctx = this.buildRewardedCloseContext(episodeIndex, resumeTimeSec);
+      console.log(
+        "[play_video_simple] simulate rewarded @close e.detail =",
+        detail,
+        ctx,
+      );
+      this.handleRewardedVideoCloseDetail(detail, ctx);
+    },
+    simulateRewardedCloseEndedTrue() {
+      if (!this.rewardedDebugVisible) return;
+      this.adUnlockInFlight = true;
+      this.runSimulatedRewardedClose(
+        this.currentEpisodeIndex,
+        this.currentTime,
+        true,
+      );
+    },
+    simulateRewardedCloseEndedFalse() {
+      if (!this.rewardedDebugVisible) return;
+      this.adUnlockInFlight = true;
+      this.runSimulatedRewardedClose(
+        this.currentEpisodeIndex,
+        this.currentTime,
+        false,
+      );
+    },
+    /** 后台已开启激励（tencent_vod 或已配置 adpid） */
+    isRewardedAdConfigured() {
+      if (this.getRewardedVideoAdpid()) return true;
+      return this.remoteAdTypesDeclared.includes("tencent_vod");
+    },
+    /**
+     * 激励视频拉取/展示失败时降级本地广告页（bypass 远程 ad_types，避免仅配激励时无法解锁）
+     */
+    fallbackRewardedToLocal(episodeIndex, resumeTimeSec, toastTitle) {
+      const canFallback =
+        this.localAdUnlockAllowed || this.isRewardedAdConfigured();
+      this._rewardedVideoAdUnlock = null;
+      this._isRewardedUnlockLoaded = false;
+      if (!canFallback) {
+        this.adUnlockInFlight = false;
+        uni.showToast({
+          icon: "none",
+          title: toastTitle || "激励视频加载失败，请稍后重试",
+        });
+        return false;
+      }
+      if (toastTitle !== false) {
+        uni.showToast({
+          icon: "none",
+          title: toastTitle || "激励视频加载失败，已切换本地广告",
+          duration: 2000,
+        });
+      }
+      this.openAdUnlockPage(episodeIndex, resumeTimeSec, true);
+      return true;
+    },
+    /**
+     * @param bypassLocalPolicy 为 true 时跳过 remote ad_types 对 local 的限制（仅用于激励位未配置时的降级）
+     */
+    openAdUnlockPage(
+      episodeIndex,
+      resumeTimeSec = 0,
+      bypassLocalPolicy = false,
+    ) {
+      if (!bypassLocalPolicy && !this.localAdUnlockAllowed) {
+        uni.showToast({
+          icon: "none",
+          title: "当前未开启本地广告页",
+        });
+        return;
+      }
+      const ep = (this.episodeList && this.episodeList[episodeIndex]) || {};
+      const dramaIdForAd =
+        this.dramaId ||
+        ep.drama_id ||
+        (this.dramaInfo && this.dramaInfo.id) ||
+        "";
+      const episodeOrder = Number(
+        ep.episode_order != null ? ep.episode_order : episodeIndex + 1,
+      );
+      const qs =
+        `?drama_id=${encodeURIComponent(String(dramaIdForAd || ""))}` +
+        `&episode=${encodeURIComponent(String(Math.max(1, episodeOrder || 1)))}` +
+        `&resume_time=${encodeURIComponent(String(Math.max(0, Number(resumeTimeSec) || 0)))}`;
+      const bases = [
+        "/micro_theatre_two/pages/advertisement/advert",
+        "/pages/advertisement/advert",
+      ];
+      this.adUnlockInFlight = true;
+      const tryOpen = (i, useRedirect) => {
+        if (i >= bases.length) {
+          this.adUnlockInFlight = false;
+          uni.showToast({
+            title: "广告页打开失败",
+            icon: "none",
+          });
+          return;
+        }
+        const url = bases[i] + qs;
+        const api = useRedirect ? uni.redirectTo : uni.navigateTo;
+        api.call(uni, {
+          url,
+          fail: (err) => {
+            const msg = String((err && err.errMsg) || "");
+            console.warn("[openAdUnlockPage] fail", url, msg);
+            if (!useRedirect) {
+              const low = msg.toLowerCase();
+              const stackLike =
+                low.indexOf("limit") !== -1 ||
+                low.indexOf("depth") !== -1 ||
+                low.indexOf("webview") !== -1 ||
+                msg.indexOf("栈") !== -1 ||
+                msg.indexOf("层") !== -1;
+              if (stackLike) {
+                tryOpen(i, true);
+                return;
+              }
+            }
+            tryOpen(i + 1, false);
+          },
+        });
+      };
+      tryOpen(0, false);
+    },
+    /**
+     * 对应 task.vue 里 @click="show(index)"：观看激励视频入口（index 为剧集下标 0 起，不传则用当前集）。
+     */
+    showUnlockRewarded(index) {
+      if (this.adUnlockInFlight) return;
+      const epIdx =
+        index != null && index !== "" && Number.isFinite(Number(index))
+          ? this.normalizeEpisodeIndex(Number(index))
+          : this.currentEpisodeIndex;
+      const resume = Math.max(0, Number(this.currentTime) || 0);
+      console.log("[play_video_simple] showUnlockRewarded", epIdx, resume);
+      this.openInlineRewardedUnlock(epIdx, resume);
+    },
+    /**
+     * 对应 task.vue 的 showTask：创建激励实例、onLoad/onError/onClose、load().then(show())。
+     * 无 adpid 或不支持 SDK：ad_mock 模拟 / 本地广告页 / toast。
+     */
+    openInlineRewardedUnlock(episodeIndex, resumeTimeSec = 0) {
+      const ctx = this.buildRewardedCloseContext(episodeIndex, resumeTimeSec);
+      if (globalData.micro_theatre_rewarded_mock_success) {
+        const mockCloseDetail = { isEnded: true };
+        const logBody = {
+          scene: "play_video_simple_unlock",
+          eDetail: mockCloseDetail,
+          closeContext: ctx,
+          advert_watch_log_add: {
+            drama_id: ctx.dramaIdNum,
+            episode: ctx.episodeOrder,
+            watch_seconds: 1,
+            ad_video_id: 0,
+            play_type: "rewarded",
+          },
+          ad_unlock_success: {
+            dramaId: String(ctx.dramaIdForAd || ""),
+            episode: ctx.episodeOrder,
+            watchSeconds: 1,
+            resume_time: ctx.resumeSec,
+          },
+        };
+        console.log("[play_video_simple] 激励视频【模拟】视为看完", logBody);
+        this.handleRewardedVideoCloseDetail(mockCloseDetail, ctx);
+        return;
+      }
+      const adpid = this.getRewardedVideoAdpid();
+      const hasSdk = typeof uni.createRewardedVideoAd === "function";
+      const canShowReal = !!(adpid && hasSdk);
+
+      if (!canShowReal) {
+        if (this.adUnlockMockEnabled) {
+          this.adUnlockInFlight = true;
+          this.handleRewardedVideoCloseDetail({ isEnded: true }, ctx);
+          return;
+        }
+        if (this.localAdUnlockAllowed) {
+          this.openAdUnlockPage(episodeIndex, resumeTimeSec);
+          return;
+        }
+        // 远程仅配了 tencent_vod 等但未填 adpid 时：仍打开本地广告页，避免用户无法解锁
+        if (hasSdk && !adpid) {
+          this.openAdUnlockPage(episodeIndex, resumeTimeSec, true);
+          return;
+        }
+        uni.showToast({
+          icon: "none",
+          title: hasSdk
+            ? "未配置激励广告位，无法播放"
+            : "当前环境不支持激励视频",
+        });
+        return;
+      }
+
+      const idx = this.normalizeEpisodeIndex(episodeIndex);
+      const ep = (this.episodeList && this.episodeList[idx]) || {};
+      const dramaIdForAd =
+        this.dramaId ||
+        ep.drama_id ||
+        (this.dramaInfo && this.dramaInfo.id) ||
+        "";
+      const episodeOrder = Math.max(
+        1,
+        Number(ep.episode_order != null ? ep.episode_order : idx + 1) || 1,
+      );
+      const resumeSec = Math.max(0, Math.floor(Number(resumeTimeSec) || 0));
+
+      this._isRewardedUnlockLoaded = false;
+      this.adUnlockInFlight = true;
+      const that = this;
+      const rewardedVideoAd = (this._rewardedVideoAdUnlock =
+        uni.createRewardedVideoAd({
+          adpid,
+          urlCallback: {
+            userId: this.unlockUserIdForCallback(),
+            extra: {
+              http_host: this.http_host,
+              customer_id: this.customer_id,
+              scene: "play_video_simple_unlock",
+              drama_id: dramaIdForAd,
+              episode: episodeOrder,
+              episode_index: idx + 1,
+              resume_time: resumeSec,
+            },
+          },
+        }));
+      // H5 等：createRewardedVideoAd 存在但返回无效对象
+      if (
+        !rewardedVideoAd ||
+        typeof rewardedVideoAd.onLoad !== "function" ||
+        typeof rewardedVideoAd.load !== "function"
+      ) {
+        this.adUnlockInFlight = false;
+        this._rewardedVideoAdUnlock = null;
+        if (this.adUnlockMockEnabled) {
+          this.adUnlockInFlight = true;
+          this.handleRewardedVideoCloseDetail({ isEnded: true }, ctx);
+          return;
+        }
+        this.fallbackRewardedToLocal(episodeIndex, resumeTimeSec);
+        return;
+      }
+      rewardedVideoAd.onLoad(() => {
+        that._isRewardedUnlockLoaded = true;
+        console.log("[play_video_simple] rewarded onLoad");
+      });
+      rewardedVideoAd.onError((err) => {
+        console.log("[play_video_simple] rewarded onError", err);
+        that._isRewardedUnlockLoaded = false;
+        that.adUnlockInFlight = false;
+        that.fallbackRewardedToLocal(
+          episodeIndex,
+          resumeTimeSec,
+          "激励视频加载失败，已切换本地广告",
+        );
+      });
+      rewardedVideoAd.onClose((res) => {
+        console.log("[play_video_simple] rewarded onClose", res);
+        if (res && res.isEnded) {
+          console.log("正常播放结束", res.isEnded);
+        } else {
+          console.log("播放中途退出", res && res.isEnded);
+        }
+        const detail = { isEnded: !!(res && res.isEnded) };
+        that.handleRewardedVideoCloseDetail(detail, ctx);
+      });
+      rewardedVideoAd
+        .load()
+        .then(() => rewardedVideoAd.show())
+        .catch((err) => {
+          console.log("[play_video_simple] load/show rejected", err);
+          that.adUnlockInFlight = false;
+          that.fallbackRewardedToLocal(
+            episodeIndex,
+            resumeTimeSec,
+            "激励视频加载失败，已切换本地广告",
+          );
+        });
+    },
+    openRandomAdUnlock(episodeIndex, resumeTime) {
+      const p = this.adUnlockRewardedProbability;
+      const wantRewarded = Math.random() < p;
+      if (wantRewarded) {
+        this.openInlineRewardedUnlock(episodeIndex, resumeTime);
+        return;
+      }
+      if (this.localAdUnlockAllowed) {
+        this.openAdUnlockPage(episodeIndex, resumeTime);
+        return;
+      }
+      this.openInlineRewardedUnlock(episodeIndex, resumeTime);
+    },
+
+    normalizeEpisodeIndex(index) {
+      const parsedIndex = Number(index);
+      if (!Number.isFinite(parsedIndex) || parsedIndex < 0) {
+        return 0;
+      }
+      const len =
+        Array.isArray(this.episodeList) && this.episodeList.length
+          ? this.episodeList.length
+          : Array.isArray(this.videoList)
+            ? this.videoList.length
+            : 0;
+      if (!len) return 0;
+      if (parsedIndex <= 0) return 0;
+      if (parsedIndex >= len) {
+        return len - 1;
+      }
+      return Math.floor(parsedIndex);
+    },
+    /** 支付回跳 URL 中的集序：优先 buy_num，其次当前条目的 episode_order，最后列表下标+1 */
+    resolveEpisodeOrderForPayUrl() {
+      if (this.buyNum != null && Number(this.buyNum) > 0) {
+        return Math.floor(Number(this.buyNum));
+      }
+      const list = this.episodeList || [];
+      const idx = this.normalizeEpisodeIndex(this.currentEpisodeIndex);
+      const ep = list[idx];
+      if (ep && typeof ep === "object") {
+        const ord = Number(ep.episode_order);
+        if (Number.isFinite(ord) && ord > 0) {
+          return Math.floor(ord);
+        }
+      }
+      return Math.max(1, idx + 1);
+    },
+    handleVideoChange(index) {
+      const idx = this.normalizeEpisodeIndex(index);
+      this.currentEpisodeIndex = idx;
+      this.initialEpisodeIndex = idx;
+      this.reportTheatreWatchLog();
+    },
+    // 选集弹窗中点击集数，切换到对应集播放
+    handleEpisodeClick(index) {
+      const prevIndex = this.currentEpisodeIndex;
+      const nextIndex = this.normalizeEpisodeIndex(index);
+      const playUrl = this.episodePlayUrl(nextIndex);
+      if (!playUrl) {
+        uni.showToast({
+          title: "该剧集暂无视频",
+          icon: "none",
+        });
+        return;
+      }
+      this.buyNum = null;
+      this.showSort = false;
+      this.reportTheatreWatchLog();
+      this.$nextTick(() => {
+        this.$nextTick(() => {
+          this.commitEpisodeSwitch(prevIndex, nextIndex);
+        });
+      });
+    },
+    getCurrentEpisodeId() {
+      const ep = this.episodeList && this.episodeList[this.currentEpisodeIndex];
+      if (!ep) return 0;
+      const id = ep.id || ep.episode_id || ep.episodeId;
+      return Number(id) || 0;
+    },
+    reportTheatreWatchLog() {
+      // 仅在具备必要参数时上报
+      const dramaId =
+        Number(this.dramaId || (this.dramaInfo && this.dramaInfo.id)) || 0;
+      const episodeId = this.getCurrentEpisodeId();
+      if (!dramaId || !episodeId) return;
+
+      const today = new Date();
+      const ymd =
+        today.getFullYear() +
+        "-" +
+        String(today.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(today.getDate()).padStart(2, "0");
+      const key = `${dramaId}_${episodeId}_${ymd}`;
+      if (this.lastWatchLogKey === key) return;
+      this.lastWatchLogKey = key;
+
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=theatre_watch_log_add",
+        method: "POST",
+        data: {
+          drama_id: dramaId,
+          episode_id: episodeId,
+          scene_type: "normal",
+          from_type: 2,
+        },
+      }).catch(() => {
+        // 上报失败不影响播放
+      });
+    },
+    parseTrialRatio(value) {
+      if (typeof value === "number") {
+        if (!Number.isFinite(value)) return 0;
+        return value > 1 ? Math.min(value / 100, 1) : Math.max(0, value);
+      }
+      if (typeof value !== "string") {
+        return 0;
+      }
+      const normalizedValue = value.trim();
+      if (!normalizedValue) return 0;
+      if (normalizedValue.endsWith("%")) {
+        const percentValue = parseFloat(normalizedValue.slice(0, -1));
+        if (!Number.isFinite(percentValue)) return 0;
+        return Math.min(Math.max(percentValue / 100, 0), 1);
+      }
+      const parsedValue = Number(normalizedValue);
+      if (!Number.isFinite(parsedValue)) return 0;
+      return parsedValue > 1
+        ? Math.min(parsedValue / 100, 1)
+        : Math.max(parsedValue, 0);
+    },
+    async handleTrialLimitReached(payload) {
+      const payloadIndex =
+        payload && typeof payload === "object" ? payload.index : payload;
+      const episodeIndex = this.normalizeEpisodeIndex(payloadIndex);
+      if (
+        episodeIndex < this.freeEpisodeCount ||
+        this.trialExhaustedEpisodes[episodeIndex]
+      ) {
+        return;
+      }
+      // trial 到边界时，同步一次当前播放时间，确保“观看广告解锁”回传进度准确
+      if (
+        payload &&
+        typeof payload === "object" &&
+        Number(payload.currentTime) >= 0 &&
+        Number.isFinite(Number(payload.currentTime))
+      ) {
+        if (episodeIndex === this.currentEpisodeIndex) {
+          this.currentTime = Number(payload.currentTime);
+        }
+      }
+      this.$set(this.trialExhaustedEpisodes, episodeIndex, true);
+      const resumeTime =
+        payload && typeof payload === "object"
+          ? Number(payload.currentTime || payload.time || 0)
+          : 0;
+      this.currentTime = Math.max(0, Number(resumeTime) || 0);
+      if (episodeIndex === this.currentEpisodeIndex) {
+        const d = this.pvsGetEpisodeDuration(episodeIndex);
+        if (d > 0) {
+          const ct = this.pvsGetClampedCurrentTime(this.currentTime, d);
+          this.currentTime = ct;
+          this.pvsApplyProgress(ct, d);
+        }
+      }
+      // 试看结束不自动弹出购买弹窗，用户可点「解锁当前剧集」进入
+    },
+    /** 与全屏遮罩一致：点视频区暗层关闭购买层 */
+    onBuyCoverTap() {
+      this.closeBuyPop();
+    },
+    closeBuyPop() {
+      this.showBuyPop = false;
+    },
+    toggleBuyPop() {
+      // #ifdef APP-PLUS
+      console.log("[play_video_simple][cover-tap] toggleBuyPop");
+      // #endif
+      const next = !this.showBuyPop;
+      if (next) {
+        this.payReturnEpisodeOrderForBridge =
+          this.resolveEpisodeOrderForPayUrl();
+      }
+      // #ifdef APP-PLUS
+      if (next) {
+        this.initialEpisodeIndex = this.normalizeEpisodeIndex(
+          this.currentEpisodeIndex,
+        );
+      }
+      // #endif
+      this.showBuyPop = next;
+    },
+    toggleComment() {
+      // #ifdef APP-PLUS
+      console.log("[play_video_simple][cover-tap] toggleComment");
+      // #endif
+      const next = !this.showComment;
+      // #ifdef APP-PLUS
+      if (next) {
+        this.initialEpisodeIndex = this.normalizeEpisodeIndex(
+          this.currentEpisodeIndex,
+        );
+      }
+      // #endif
+      this.showComment = next;
+      if (next) {
+        this.fetchCommentTotal();
+        this.fetchCommentList();
+      }
+    },
+    onCommentPopupClose() {
+      if (!this.showComment) return;
+      this.showComment = false;
+    },
+    async toggleSort() {
+      // #ifdef APP-PLUS
+      console.log("[play_video_simple][cover-tap] toggleSort", {
+        wasOpen: this.showSort,
+      });
+      // #endif
+      if (this.showSort) {
+        this.showSort = false;
+        return;
+      }
+      try {
+        await this.openSortAndSelectEpisode(
+          (Number(this.currentEpisodeIndex) || 0) + 1,
+        );
+      } catch (e) {
+        console.warn("[play_video_simple] toggleSort", e);
+        uni.showToast({
+          title: "选集打开失败，请重试",
+          icon: "none",
+        });
+      }
+    },
+    toggleAutoChange() {
+      this.isAutoChange = !this.isAutoChange;
+    },
+    async fetchEpisodePage(page) {
+      const p = Number(page) || 1;
+      const res = await request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=episode_list",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+          page: p,
+          page_size: this.popupPageSize,
+        },
+      });
+      if (!(res && res.errcode == 0 && res.data && res.data.list)) {
+        return {
+          list: [],
+          count: 0,
+        };
+      }
+      const list = (res.data.list || []).slice();
+      // 兼容字段缺失/字段名不一致：保证 episode_order 为 1..N 的数字
+      const baseOrder = (p - 1) * (Number(this.popupPageSize) || 20);
+      for (let i = 0; i < list.length; i++) {
+        const row = list[i] || {};
+        let order = Number(
+          row.episode_order ??
+            row.episodeOrder ??
+            row.episode_no ??
+            row.episodeNo ??
+            row.episode_num ??
+            row.episodeNum ??
+            0,
+        );
+        if (!Number.isFinite(order) || order <= 0) {
+          order = baseOrder + i + 1;
+        }
+        row.episode_order = Math.floor(order);
+        list[i] = row;
+      }
+      list.sort(
+        (a, b) =>
+          (Number(a.episode_order) || 0) - (Number(b.episode_order) || 0),
+      );
+      const count = Number(res.data.count) || 0;
+      return {
+        list,
+        count,
+      };
+    },
+    rebuildMergedEpisodes(maxPage) {
+      const pages = Number(maxPage) || 1;
+      const merged = [];
+      for (let p = 1; p <= pages; p++) {
+        const part = this.episodePageCache[p];
+        if (part && part.length) merged.push(...part);
+      }
+      merged.sort((a, b) => Number(a.episode_order) - Number(b.episode_order));
+      this.episodeList = merged;
+      this.pvsHydrateDurationCacheFromEpisodes(merged);
+      // 与 episodeList 等长，禁止 filter 掉无地址项，否则 swiper 下标与第 2、3 集会错位
+      this.videoList = merged.map((item) => {
+        const u = this.getEpisodeVideoUrl(item);
+        return typeof u === "string" && u.length > 0 ? u : "";
+      });
+    },
+    async ensurePagesLoaded(targetPage) {
+      const tp = Math.max(1, Math.floor(Number(targetPage) || 1));
+      for (let p = 1; p <= tp; p++) {
+        if (this.episodePageCache[p]) continue;
+        try {
+          const { list } = await this.fetchEpisodePage(p);
+          this.$set(this.episodePageCache, p, list);
+        } catch (e) {
+          // 忽略单页失败，保留已加载的页
+        }
+      }
+      this.rebuildMergedEpisodes(tp);
+    },
+    // 接口：短剧详情
+    fetchDramaDetail() {
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_detail",
+        method: "POST",
+        data: {
+          id: this.dramaId,
+          user_id: getMtUserId(),
+        },
+      })
+        .then((res) => {
+          if (res.errcode == 0 && res.data && res.data.info) {
+            const info = res.data.info || {};
+            this.dramaInfo = Object.assign({}, this.dramaInfo || {}, info);
+            if (typeof info.isLike !== "undefined") {
+              this.isLike = Number(info.isLike) === 1;
+            }
+
+            if (this.sortHeaderInfo && typeof this.sortHeaderInfo === "object") {
+              this.sortHeaderInfo.cover =
+                info.cover_image || this.sortHeaderInfo.cover;
+              this.sortHeaderInfo.title =
+                info.name || this.sortHeaderInfo.title;
+              this.sortHeaderInfo.subtitle =
+                (info.description && info.description.replace(/<[^>]+>/g, "")) ||
+                this.sortHeaderInfo.subtitle;
+            } else {
+              this.sortHeaderInfo = {
+                cover:
+                  info.cover_image ||
+                  this.http_host +
+                    "/micro_theatre_two/web/static/images/movie.png",
+                title: info.name || "短剧标题",
+                subtitle:
+                  (info.description &&
+                    info.description.replace(/<[^>]+>/g, "")) ||
+                  "短剧简介",
+              };
+            }
+          }
+        })
+        .catch(() => {});
+    },
+    // 分段切换：点击 1-20 / 21-40 / 41-60 等标签
+    async changeSegment(index) {
+      const idx = Number(index) || 0;
+      this.currentSegmentIndex = idx;
+      const page = idx + 1; // 第 0 段对应 page=1
+
+      // 确保 1..page 都已加载（避免直接点 41-55 导致中间页缺失、索引不连续无法播放）
+      await this.ensurePagesLoaded(page);
+
+      if (this.episodePageCache[page]) {
+        this.popupEpisodeList = this.episodePageCache[page];
+      } else {
+        this.popupEpisodeList = [];
+      }
+    },
+    // 接口：剧集列表（首页一次性获取，供播放器与第 1 段使用）
+    async fetchEpisodeList() {
+      try {
+        const wantIdx = Math.max(
+          0,
+          Math.floor(Number(this.currentEpisodeIndex) || 0),
+        );
+        const pageSize = Number(this.popupPageSize) || 20;
+        const needPage = Math.max(1, Math.ceil((wantIdx + 1) / pageSize));
+        const { list, count } = await this.fetchEpisodePage(1);
+        if (Number.isFinite(count) && count > 0) {
+          const c = Math.floor(Number(count));
+          this.episodeTotalCount = c;
+          this.$set(this.dramaInfo, "total_episodes", c);
+        }
+        this.$set(this.episodePageCache, 1, list);
+        if (needPage > 1) {
+          await this.ensurePagesLoaded(needPage);
+        } else {
+          this.rebuildMergedEpisodes(1);
+        }
+        const idx = this.normalizeEpisodeIndex(wantIdx);
+        this.initialEpisodeIndex = idx;
+        this.currentEpisodeIndex = idx;
+        this.popupEpisodeList = this.episodePageCache[needPage] || list;
+        // 如果之前已经看完广告但当时还没拿到剧集列表，这里补一次解锁逻辑
+        if (this.pendingAdUnlockEpisode) {
+          const epNo = Number(this.pendingAdUnlockEpisode) || 1;
+          const resumeTime = Number(this.pendingAdUnlockResumeTime) || 0;
+          const idx = this.normalizeEpisodeIndex(epNo - 1);
+          const vLen = Array.isArray(this.episodeList) ? this.episodeList.length : 0;
+          if (idx >= 0 && idx < vLen) {
+            this.$set(this.adUnlockedEpisodes, idx, true);
+            this.initialEpisodeIndex = idx;
+            this.currentEpisodeIndex = idx;
+            this.resumeTime = resumeTime;
+            this.currentTime = resumeTime;
+          }
+          this.pendingAdUnlockEpisode = null;
+          this.pendingAdUnlockResumeTime = 0;
+        }
+
+        // 如果从其它页面带 open_sort 进来，则自动打开选集弹窗并定位到对应集
+        if (this.pendingOpenSortEpisode) {
+          const targetEp = this.pendingOpenSortEpisode;
+          this.pendingOpenSortEpisode = null;
+          await this.openSortAndSelectEpisode(targetEp);
+        }
+        this.$nextTick(() => {
+          this.syncPlayerAfterIndexChange();
+        });
+      } catch (e) {
+        console.warn("fetchEpisodeList 网络异常，使用已有剧集列表：", e);
+      } finally {
+        this.pageInitLoading = false;
+      }
+    },
+    commentRowContent(row) {
+      if (!row || typeof row !== "object") return "";
+      return String(row.content || row.comment || row.text || "").trim();
+    },
+    commentRowUserLabel(row) {
+      if (!row || typeof row !== "object") return "用户";
+      const n =
+        row.user_name ||
+        row.nickname ||
+        row.weixin_name ||
+        row.name ||
+        "";
+      const s = String(n).trim();
+      return s || "用户";
+    },
+    commentRowAvatar(row) {
+      const host = String(this.http_host || "").replace(/\/+$/, "");
+      const fallback =
+        host + "/micro_theatre_two/web/static/images/default-avatar.png";
+      if (!row || typeof row !== "object") return fallback;
+      const raw =
+        row.headimgurl ||
+        row.avatar ||
+        row.user_avatar ||
+        "";
+      const url = String(raw || "").trim();
+      if (!url) return fallback;
+      if (/^https?:\/\//i.test(url)) return url;
+      const path = url.replace(/\\/g, "/").replace(/^\/+/, "");
+      return host ? host + "/" + path : fallback;
+    },
+    fetchCommentList() {
+      if (!this.dramaId) return;
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_comments",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+          page: 1,
+          limit: 20,
+          page_size: 20,
+        },
+      })
+        .then((res) => {
+          if (res.errcode == 0 && res.data && Array.isArray(res.data.list)) {
+            this.commentList = res.data.list
+              .filter((row) => {
+                const t = String(
+                  row && (row.content || row.comment || row.text || ""),
+                ).trim();
+                return !!t;
+              })
+              .map((row) =>
+                typeof row === "object" && row
+                  ? row
+                  : { content: String(row || "") },
+              );
+          } else {
+            this.commentList = [];
+          }
+        })
+        .catch(() => {
+          this.commentList = [];
+        });
+    },
+    // 接口：评论总数
+    fetchCommentTotal() {
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_comments",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+          page: 1,
+          limit: 1,
+          page_size: 1,
+        },
+      })
+        .then((res) => {
+          if (res.errcode == 0 && res.data) {
+            const total =
+              Number(res.data.count) ||
+              Number(res.data.total) ||
+              Number(res.data.total_count) ||
+              (Array.isArray(res.data.list) ? res.data.list.length : 0);
+            this.commentTotal = total || 0;
+          } else {
+            this.commentTotal = 0;
+          }
+        })
+        .catch(() => {
+          this.commentTotal = 0;
+        });
+    },
+    // 统一处理购买弹窗提交事件：这里仅预留接口调用位置
+    handleBuySubmit(payload) {
+      console.log("buy submit payload:", payload);
+    },
+    toggleLike() {
+      // #ifdef APP-PLUS
+      console.log("[play_video_simple][cover-tap] toggleLike");
+      // #endif
+      if (!this.dramaId) {
+        uni.showToast({
+          title: "短剧信息异常",
+          icon: "none",
+        });
+        return;
+      }
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=toggle_drama_like",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+          type: 1,
+        },
+      })
+        .then((res) => {
+          if (res.errcode == 0) {
+            const prev = this.isLike;
+            this.isLike = !this.isLike;
+            if (!(this.dramaInfo && typeof this.dramaInfo === "object")) {
+              this.dramaInfo = {
+                id: null,
+                name: "",
+                cover_image: "",
+                freeTimeProportion: "10%",
+                favorite_count: 0,
+                like_count: 0,
+              };
+            }
+            const cur =
+              Number(
+                this.dramaInfo.like_count != null
+                  ? this.dramaInfo.like_count
+                  : this.dramaInfo.favorite_count,
+              ) || 0;
+            const next = this.isLike ? cur + 1 : Math.max(0, cur - 1);
+            this.$set(this.dramaInfo, "like_count", next);
+            // 调试：输出用户操作后的点赞态
+            console.log("[play_video_simple] isLike toggled:", {
+              dramaId: this.dramaId,
+              user_id: getMtUserId(),
+              prev_isLike: prev,
+              next_isLike: this.isLike,
+              like_count_next: next,
+              api_errmsg: res.errmsg,
+            });
+          }
+        })
+        .catch((ret) => {
+          const msg = (ret && ret.errmsg) || "操作失败，请稍后重试";
+          uni.showToast({
+            title: msg,
+            icon: "none",
+          });
+        });
+    },
+    submitComment() {
+      const content = String(this.commentDraft || "")
+        .replace(/[\u3000\s]+/g, " ")
+        .trim();
+      if (!content) {
+        uni.showToast({
+          title: "请输入评论内容",
+          icon: "none",
+        });
+        return;
+      }
+      if (!this.dramaId) {
+        uni.showToast({
+          title: "短剧信息异常",
+          icon: "none",
+        });
+        return;
+      }
+      uni.showLoading({
+        title: "发送中",
+        mask: true,
+      });
+      request({
+        url: "/micro_theatre_two/web/index.php?m=index_data&a=add_comment",
+        method: "POST",
+        data: {
+          drama_id: this.dramaId,
+          content,
+        },
+      })
+        .then((res) => {
+          uni.hideLoading();
+          if (res.errcode == 0) {
+            this.commentDraft = "";
+            this.fetchCommentTotal();
+            this.fetchCommentList();
+            uni.showToast({
+              title: res.errmsg || "评论成功",
+              icon: "success",
+            });
+          }
+        })
+        .catch((ret) => {
+          uni.hideLoading();
+          const msg = (ret && ret.errmsg) || "发送失败，请重试";
+          uni.showToast({
+            title: msg,
+            icon: "none",
+          });
+        });
+    },
+  },
+};
+</script>
+
+<style>
+.play-box {
+    position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #000000;
+  flex-direction: column;
+}
+.pvs-screen-overlay {
+    position: absolute;
+  left: 0;
+  right: 0;
+}
+.play-video-fill {
+  flex: 1;
+  width: 750rpx;
+}
+.pvs-player-page {
+  flex: 1;
+  width: 750rpx;
+  position: relative;
+  background-color: #000000;
+}
+.pvs-top-nav {
+  position: absolute;
+  left: 16rpx;
+  right: 16rpx;
+  top: 44px;
+  height: 80rpx;
+  flex-direction: row;
+  align-items: center;
+  z-index: 10100;
+}
+.pvs-back-btn {
+  width: 72rpx;
+  height: 80rpx;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.pvs-back-icon {
+  color: #ffffff;
+  font-size: 60rpx;
+  font-weight: bold;
+  line-height: 80rpx;
+  text-align: center;
+  width: 72rpx;
+}
+.pvs-search-bar {
+  flex: 1;
+  height: 64rpx;
+  flex-direction: row;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 32rpx;
+  padding-left: 20rpx;
+  padding-right: 16rpx;
+}
+.pvs-search-bar-icon {
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.72);
+  margin-right: 10rpx;
+  flex-shrink: 0;
+}
+.pvs-search-bar-placeholder {
+  flex: 1;
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.65);
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.pvs-search-bar-divider {
+  width: 2rpx;
+  height: 28rpx;
+  background-color: rgba(255, 255, 255, 0.28);
+  margin-left: 12rpx;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+.pvs-search-bar-action {
+  font-size: 28rpx;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.pvs-page-init-loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 200rpx;
+  bottom: 0;
+  z-index: 10050;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.pvs-page-init-spinner {
+  width: 56rpx;
+  height: 56rpx;
+  margin-bottom: 16rpx;
+  color: rgba(255, 255, 255, 0.9);
+}
+.pvs-page-init-loading-text {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 28rpx;
+}
+.pvs-swiper {
+  flex: 1;
+  width: 750rpx;
+}
+.pvs-swiper-item {
+  position: relative;
+  flex: 1;
+  width: 750rpx;
+  background-color: #000000;
+}
+.pvs-video-buy-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+.pvs-video {
+          position: absolute;
+          top: 0;
+  left: 0;
+          right: 0;
+  bottom: 0;
+}
+.pvs-video-placeholder {
+  flex: 1;
+  background-color: #000000;
+}
+.pvs-video-gesture-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  background-color: transparent;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+.pvs-pause-hit {
+  width: 160rpx;
+  height: 160rpx;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+.pvs-progress-bar-wrap {
+  position: absolute;
+  height: 72rpx;
+  flex-direction: row;
+        align-items: center;
+  justify-content: center;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+}
+.pvs-progress-slider {
+  height: 32rpx;
+}
+.pvs-pause-overlay-img {
+  width: 120rpx;
+        height: 120rpx;
+}
+.pvs-cover-buy {
+  position: absolute;
+  left: 0;
+  z-index: 10000;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+.pvs-cover-buy-chip {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding-top: 22rpx;
+  padding-bottom: 22rpx;
+  padding-left: 48rpx;
+  padding-right: 48rpx;
+  background-color: #0a9b94;
+  border-radius: 48rpx;
+}
+.pvs-cover-buy-text {
+  font-size: 28rpx;
+        font-weight: 600;
+  color: #ffffff;
+}
+.pvs-cover-right {
+  position: absolute;
+  z-index: 10000;
+  bottom: 400rpx;
+  right: 30rpx;
+  flex-direction: column;
+  align-items: center;
+}
+.pvs-cover-right-item {
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 48rpx;
+}
+.pvs-cover-icon {
+        width: 44rpx;
+        height: 44rpx;
+  margin-bottom: 8rpx;
+}
+.pvs-cover-num {
+  font-size: 22rpx;
+  color: #ffffff;
+  text-align: center;
+}
+.pvs-cover-bottom {
+  flex-direction: column;
+}
+.pvs-cover-movie {
+  flex-direction: row;
+      align-items: center;
+  padding-left: 30rpx;
+  padding-right: 30rpx;
+  padding-bottom: 10rpx;
+}
+.pvs-cover-movie-img {
+  width: 44rpx;
+  height: 60rpx;
+  margin-right: 16rpx;
+  border-radius: 8rpx;
+}
+.pvs-cover-movie-name {
+  flex: 1;
+        font-size: 28rpx;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.pvs-cover-movie-arrow {
+  font-size: 28rpx;
+  color: #ffffff;
+  margin-left: 8rpx;
+}
+.pvs-cover-black {
+      background-color: rgba(0, 0, 0, 0.15);
+  margin-top: 15rpx;
+  margin-left: 30rpx;
+  margin-right: 30rpx;
+  
+        border-radius: 16rpx;
+}
+.pvs-cover-info-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12rpx;
+  padding-bottom: 12rpx;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+}
+.pvs-cover-info-main {
+  flex: 1;
+  font-size: 22rpx;
+  color: #ffffff;
+        margin-right: 16rpx;
+  lines: 2;
+}
+.pvs-cover-info-arrow-up {
+  font-size: 20rpx;
+  color: #ffffff;
+}
+.pvs-rewarded-mock-col {
+  position: fixed;
+  right: 20rpx;
+  top: 200rpx;
+  z-index: 10050;
+  width: 220rpx;
+}
+.pvs-rewarded-mock-btn {
+  padding-top: 12rpx;
+  padding-bottom: 12rpx;
+  padding-left: 16rpx;
+  padding-right: 16rpx;
+  border-radius: 8rpx;
+  background-color: rgba(255, 165, 0, 0.95);
+  margin-bottom: 12rpx;
+  align-items: center;
+}
+.pvs-rewarded-mock-btn--muted {
+  background-color: rgba(120, 120, 120, 0.95);
+  margin-bottom: 0;
+}
+.pvs-rewarded-mock-btn-t {
+  font-size: 22rpx;
+  color: #1a1a1a;
+  text-align: center;
+}
+.pvs-rewarded-mock-btn-t-white {
+    color: #ffffff;
+}
+.buy-tips {
+  position: absolute;
+  left: 0;
+  z-index: 99;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+.buy-tips-text {
+  font-size: 28rpx;
+  color: #ffffff;
+  font-weight: 600;
+}
+.right-box {
+  position: absolute;
+  z-index: 99;
+  bottom: 400rpx;
+  right: 30rpx;
+}
+.item {
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 48rpx;
+}
+.item-icon {
+  width: 44rpx;
+  height: 44rpx;
+  margin-bottom: 8rpx;
+}
+.item .num {
+  font-size: 22rpx;
+  color: #ffffff;
+  text-align: center;
+}
+.bottom-box {
+  position: absolute;
+  z-index: 99;
+  left: 0;
+  width: 750rpx;
+}
+.movie-row-app {
+  flex-direction: row;
+  align-items: center;
+  padding-left: 30rpx;
+  padding-right: 30rpx;
+  padding-bottom: 10rpx;
+}
+.movie-cover {
+  width: 44rpx;
+  height: 60rpx;
+  margin-right: 16rpx;
+  border-radius: 8rpx;
+}
+.movie-row-app .name {
+  flex: 1;
+  font-size: 28rpx;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.arrow-right-text {
+  font-size: 28rpx;
+  color: #ffffff;
+  margin-left: 8rpx;
+}
+.black-box {
+  background-color: rgba(0, 0, 0, 0.15);
+  margin-top: 15rpx;
+  margin-left: 30rpx;
+  margin-right: 30rpx;
+  border-radius: 16rpx;
+}
+.info-row-app {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12rpx;
+  padding-bottom: 12rpx;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+}
+.info-text {
+  flex: 1;
+  font-size: 22rpx;
+  color: #ffffff;
+}
+.arrow-icon-text {
+  font-size: 24rpx;
+  color: #ffffff;
+}
+.pvs-popup-root {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12000;
+}
+.pvs-popup-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.35);
+}
+.pvs-popup-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background-color: #f8f7f5;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+}
+.pvs-popup-panel-bottom {
+  bottom: 0;
+}
+/* 购买半屏：根纵向 flex + 上下各 flex:1，等价稳定半屏（图二） */
+.pvs-popup-root-buy {
+  flex-direction: column;
+}
+.pvs-popup-buy-dim {
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+.pvs-popup-panel-buy {
+  flex: 1;
+  width: 750rpx;
+  background-color: #ffffff;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pvs-popup-inner {
+  background-color: #f8f7f5;
+  padding-top: 30rpx;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+}
+.title-box-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 30rpx;
+  padding-right: 30rpx;
+  padding-bottom: 30rpx;
+  border-bottom-width: 1rpx;
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  margin-bottom: 24rpx;
+}
+.title-box-text {
+  font-size: 24rpx;
+  color: #868582;
+}
+.arrow-box {
+  flex-direction: row;
+  align-items: center;
+}
+.arrow-icon-nvue {
+  font-size: 28rpx;
+  color: #221f18;
+}
+.comment-overlay-stack {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 12000;
+}
+.comment-stack-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.35);
+  z-index: 0;
+}
+.comment-stack-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 420rpx;
+  background-color: #f6f6f6;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+  z-index: 1;
+  overflow: hidden;
+}
+.comment-top-bar {
+  height: 64rpx;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  border-bottom-width: 1rpx;
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  background-color: #ffffff;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.comment-total-text {
+  color: #646464;
+  font-size: 24rpx;
+}
+.comment-collapse-hit {
+  width: 80rpx;
+  height: 64rpx;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+.comment-collapse-arrow {
+  color: #666666;
+  font-size: 28rpx;
+}
+.comment-scroll {
+  height: 250rpx;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  background-color: #ffffff;
+}
+.comment-cell {
+  padding-top: 18rpx;
+  padding-bottom: 18rpx;
+}
+.comment-user-row {
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 10rpx;
+}
+.comment-avatar {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 22rpx;
+  background-color: #eaeaea;
+}
+.comment-username {
+  margin-left: 12rpx;
+  color: #777777;
+  font-size: 24rpx;
+}
+.comment-content {
+  color: #333333;
+  font-size: 30rpx;
+  line-height: 40rpx;
+}
+.comment-empty {
+  text-align: center;
+  color: #9a9a9a;
+  font-size: 24rpx;
+  padding-top: 60rpx;
+}
+.comment-input-wrap {
+  height: 106rpx;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  background-color: #f6f6f6;
+  flex-direction: row;
+  align-items: center;
+}
+.comment-input {
+  flex: 1;
+  height: 70rpx;
+  border-radius: 12rpx;
+  background-color: #e9e9e9;
+  padding-left: 18rpx;
+  padding-right: 18rpx;
+  color: #666666;
+  font-size: 24rpx;
+}
+.comment-send-hit {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding-left: 20rpx;
+  padding-right: 20rpx;
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+  margin-left: 8rpx;
+}
+.comment-send-btn {
+  color: #2196f3;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.sort-header-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 30rpx;
+  padding-right: 30rpx;
+  padding-bottom: 30rpx;
+}
+.sort-header-main-row {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+}
+.sort-header-cover {
+  width: 88rpx;
+  height: 120rpx;
+  border-radius: 12rpx;
+  margin-right: 18rpx;
+  background-color: rgba(0, 0, 0, 0.08);
+}
+.sort-header-text {
+  flex: 1;
+}
+.sort-title {
+  color: #221f18;
+  font-size: 30rpx;
+  font-weight: 600;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.sort-subtitle {
+  margin-top: 6rpx;
+  color: #868582;
+  font-size: 22rpx;
+  lines: 2;
+  text-overflow: ellipsis;
+}
+.sort-header-arrow-box {
+  width: 44rpx;
+  height: 44rpx;
+  align-items: center;
+  justify-content: center;
+}
+.arrow-icon-nvue-dark {
+  font-size: 28rpx;
+  color: #221f18;
+}
+.sort-box-scroll {
+  height: 600rpx;
+  padding-left: 30rpx;
+  padding-right: 30rpx;
+  padding-bottom: 70rpx;
+}
+.segment-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: 690rpx;
+  margin-bottom: 20rpx;
+}
+.segment-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding-top: 6rpx;
+  padding-bottom: 6rpx;
+  padding-left: 18rpx;
+  padding-right: 18rpx;
+  border-radius: 999rpx;
+  background-color: rgba(0, 0, 0, 0.06);
+  margin-right: 12rpx;
+  margin-bottom: 12rpx;
+}
+.title-box-border {
+  border-bottom-width: 1rpx;
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+  margin-bottom: 24rpx;
+}
+.segment-item-active {
+  background-image: linear-gradient(to right, #0ff8ec, #fcb629);
+}
+.segment-item-text {
+  font-size: 22rpx;
+  color: #868582;
+}
+.segment-item-text-active {
+  color: #221f18;
+}
+.episode-num-wrap {
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: 690rpx;
+  justify-content: flex-start;
+}
+.num {
+  width: 100rpx;
+  height: 100rpx;
+  /* 6 列：6*100 + 5*18 = 690，与 sort-box 内容区同宽，左右留白一致 */
+  margin-right: 18rpx;
+  margin-bottom: 20rpx;
+  border-radius: 16rpx;
+  background-color: rgba(0, 0, 0, 0.08);
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.num-row-end {
+  margin-right: 0;
+}
+.num-active {
+  background-image: linear-gradient(to right, #0ff8ec, #fcb629);
+}
+.num-text {
+  width: 100rpx;
+  font-size: 28rpx;
+  color: #221f18;
+  text-align: center;
+  lines: 1;
+}
+.vip-tag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30rpx;
+  height: 30rpx;
+}
+</style>

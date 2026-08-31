@@ -1,0 +1,727 @@
+{
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8",
+    "rpxCalcMaxDeviceWidth": 1200
+  },
+  "pages": [
+    {
+      "path": "pages/start/start",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/index_son/index_son",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/webview/webview",
+      "style": {
+        "navigationBarTitleText": "",
+        "enablePullDownRefresh": false,
+        "app-plus": {
+          "titleNView": {
+            "buttons": [
+              {
+                "type": "menu",
+                "float": "right",
+                "color": "#FFFFFF"
+              },
+              {
+                "type": "home",
+                "float": "left",
+                "color": "#FFFFFF"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "path": "pages/personal_center/personal_center",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/webview_custom/webview_custom",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/webview_diy/webview_diy",
+      "style": {
+        "navigationBarTitleText": "",
+        "enablePullDownRefresh": false,
+        "app-plus": {
+          "titleNView": {
+            "buttons": [
+              {
+                "type": "home",
+                "float": "left",
+                "color": "#FFFFFF"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "public",
+      "pages": [
+        {
+          "path": "pages/user/login",
+          "style": {
+            "navigationBarTitleText": "登录",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/forgetLoginpass",
+          "style": {
+            "navigationBarTitleText": "重置登录密码",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/bind_email",
+          "style": {
+            "navigationBarTitleText": "%public.bind_email%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/setting",
+          "style": {
+            "navigationBarTitleText": "%set.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/editdata",
+          "style": {
+            "navigationBarTitleText": "%as-set.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/mypass",
+          "style": {
+            "navigationBarTitleText": "%as.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/editLoginpass",
+          "style": {
+            "navigationBarTitleText": "%as-up-pwd.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/editPaypass",
+          "style": {
+            "navigationBarTitleText": "%as-up-pay-pwd.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/setPaypass",
+          "style": {
+            "navigationBarTitleText": "设置支付密码",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/aboutus",
+          "style": {
+            "navigationBarTitleText": "%about-app.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/app_introduce",
+          "style": {
+            "navigationBarTitleText": "%about-app.func-intro%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/feedback",
+          "style": {
+            "navigationBarTitleText": "%feedback.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/scope",
+          "style": {
+            "navigationBarTitleText": "推广海报",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/promoter",
+          "style": {
+            "navigationBarTitleText": "我的特权",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/privilegeApply",
+          "style": {
+            "navigationBarTitleText": "特权申请",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/myMoney/myMoney",
+          "style": {
+            "navigationBarTitleText": "零钱",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/address",
+          "style": {
+            "navigationBarTitleText": "收货地址",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/coupon/coupon",
+          "style": {
+            "navigationBarTitleText": "优惠券",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/updateAddress",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/authorization/authorization",
+          "style": {
+            "navigationBarTitleText": "授权书",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/collect/collect",
+          "style": {
+            "navigationBarTitleText": "我的收藏",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/footprint/footprint",
+          "style": {
+            "navigationBarTitleText": "我的足迹",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/earningsFigures",
+          "style": {
+            "navigationBarTitleText": "我的特权",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/totalEarnings",
+          "style": {
+            "navigationBarTitleText": "累计收益",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/award/earningsDetail",
+          "style": {
+            "navigationBarTitleText": "收益详情",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/myTeam/myTeam",
+          "style": {
+            "navigationBarTitleText": "我的客户",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/teamDetail/teamDetail",
+          "style": {
+            "navigationBarTitleText": "团队详情",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/identy/identyPromot",
+          "style": {
+            "navigationBarTitleText": "身份特权",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/identy/identyStore",
+          "style": {
+            "navigationBarTitleText": "店长特权",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/identy/promotForm",
+          "style": {
+            "navigationBarTitleText": "销售员身份申请",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/identy/identy",
+          "style": {
+            "navigationBarTitleText": "区域代理身份申请",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/myMoney/amountConsumption",
+          "style": {
+            "navigationBarTitleText": "个人消费记录",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/cancelUser",
+          "style": {
+            "navigationBarTitleText": "%destory-acc.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/realperson",
+          "style": {
+            "navigationBarTitleText": "实名认证",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/switchAccount",
+          "style": {
+            "navigationBarTitleText": "切换账号",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/realperson",
+          "style": {
+            "navigationBarTitleText": "实名认证",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/search/search",
+          "style": {
+            "navigationBarTitleText": "搜索",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/lbs/lbs",
+          "style": {
+            "navigationBarTitleText": "城市列表",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/contact_us",
+          "style": {
+            "navigationBarTitleText": "%contact-us.page-title%",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/task/task",
+          "style": {
+            "navigationBarTitleText": "",
+            "navigationStyle": "custom",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/user/authentication",
+          "style": {
+            "navigationBarTitleText": "实名认证",
+            "enablePullDownRefresh": false
+          }
+        }
+      ]
+    },
+    {
+      "root": "shop",
+      "pages": [
+        {
+          "path": "pages/productType/productType",
+          "style": {
+            "navigationBarTitleText": "商品分组",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/commodityGroup/commodityGroup_one",
+          "style": {
+            "navigationBarTitleText": "商品分组",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/purchase_page/purchase_page",
+          "style": {
+            "navigationBarTitleText": "商品分组",
+            "enablePullDownRefresh": false
+          }
+        }
+      ]
+    },
+    {
+      "root": "micro_theatre_two",
+      "pages": [
+        {
+          "path": "pages/index/index",
+          "style": {
+            "navigationBarTitleText": "",
+            "navigationStyle": "custom",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/play_video/play_video",
+          "style": {
+            "type": "nvue",
+            "navigationBarTitleText": "",
+            "navigationStyle": "custom",
+            "enablePullDownRefresh": false,
+            "app-plus": {
+              "nvue": true
+            }
+          }
+        },
+        {
+          "path": "pages/play_video_simple/play_video_simple",
+          "style": {
+            "type": "nvue",
+            "navigationBarTitleText": "",
+            "navigationStyle": "custom",
+            "enablePullDownRefresh": false,
+            "app-plus": {
+              "nvue": true
+            }
+          }
+        },
+        {
+          "path": "pages/playlet_info/playlet_info",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/history_search/history_search",
+          "style": {
+            "navigationBarTitleText": "搜索",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "pages/score/score",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/movie_ticket/movie_ticket",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/purchase_record/purchase_record",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "pages/recharge_record/recharge_record",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/advertisement/advert",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/vip/vip",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/vip/open_vip",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/app_pay/pay",
+          "style": {
+            "navigationBarTitleText": "支付",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/app_pay/callback",
+          "style": {
+            "navigationBarTitleText": "支付返回",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/vip/open_record/open_record",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/watch_log/watch_log",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        },
+        {
+          "path": "pages/login/login",
+          "style": {
+            "navigationBarTitleText": "",
+            "enablePullDownRefresh": false
+          }
+        }
+      ]
+    },
+    {
+      "root": "website",
+      "pages": [
+        {
+          "path": "pages/video_details/video_details",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        },
+        {
+          "path": "pages/article_details/article_details",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        },
+        {
+          "path": "pages/company_info/company_info",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "公司信息",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        },
+        {
+          "path": "pages/video_list/video_list",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        },
+        {
+          "path": "pages/article_list/article_list",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        }
+      ]
+    },
+    {
+      "root": "xyun_ads",
+      "pages": [
+        {
+          "path": "pages/advertiseList",
+          "style": {
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "navigationBarTitleText": "任务列表",
+            "backgroundColor": "#eeeeee",
+            "backgroundTextStyle": "light"
+          }
+        }
+      ]
+    },
+	{
+		"root": "zjxysl_task",
+		"pages": [{
+				"path": "pages/index",
+				"style": {
+					"navigationBarTitleText": "首页",
+					"navigationBarTextStyle": "black",
+					"navigationBarBackgroundColor": "#F8F8F8",
+					"backgroundColor": "#F8F8F8",
+					"rpxCalcMaxDeviceWidth": 1200
+				}
+			},
+			{
+				"path": "pages/transaction_hall",
+				"style": {
+					"navigationBarBackgroundColor": "#ffffff",
+					"navigationBarTextStyle": "black",
+					"navigationBarTitleText": "转赠大厅",
+					"backgroundColor": "#eeeeee",
+					"backgroundTextStyle": "light"
+				}
+			},
+			{
+				"path": "pages/sign_in",
+				"style": {
+					"navigationBarBackgroundColor": "#ffffff",
+					"navigationBarTextStyle": "black",
+					"navigationBarTitleText": "签到",
+					"backgroundColor": "#eeeeee",
+					"backgroundTextStyle": "light"
+				}
+			},
+			{
+				"path": "pages/sign_watch",
+				"style": {
+					"navigationStyle": "custom",
+					"navigationBarTitleText": "观看视频",
+					"backgroundColor": "#000000"
+				}
+			}
+		]
+	},
+	{
+	  "root": "ad_task",
+	  "pages": [
+	    {
+	      "path": "pages/task/task_center",
+	      "style": {
+	        "navigationBarTitleText" : "任务中心",
+	        "navigationBarTextStyle": "black",
+	        "navigationBarBackgroundColor": "#F8F8F8",
+	        "backgroundColor": "#F8F8F8",
+	        "backgroundTextStyle": "light"
+	      }
+	    }
+	  ]
+	},
+	{
+	  "root": "functional_shoe_agent",
+	  "pages": [
+	    {
+	      "path": "pages/ad_task",
+	      "style": {
+	        "navigationBarTitleText" : "任务中心",
+	        "navigationBarTextStyle": "black",
+	        "navigationBarBackgroundColor": "#F8F8F8",
+	        "backgroundColor": "#F8F8F8",
+	        "backgroundTextStyle": "light"
+	      }
+	    },
+	    {
+	      "path": "pages/run_exchange",
+	      "style": {
+	        "navigationBarTitleText" : "步数兑换",
+	        "navigationBarTextStyle": "black",
+	        "navigationBarBackgroundColor": "#F8F8F8",
+	        "backgroundColor": "#F8F8F8",
+	        "backgroundTextStyle": "light"
+	      }
+	    },
+	    {
+	      "path": "pages/sign_in",
+	      "style": {
+			"navigationBarBackgroundColor": "#ffffff",
+			"navigationBarTextStyle": "black",
+			"navigationBarTitleText": "每日签到",
+			"backgroundColor": "#eeeeee",
+			"backgroundTextStyle": "light"
+	      }
+	    },
+	    {
+	      "path": "pages/energy_shoes",
+	      "style": {
+	        "navigationBarTitleText": "活力鞋园",
+	        "navigationBarTextStyle": "black",
+	        "navigationBarBackgroundColor": "#EAF6E9",
+	        "backgroundColor": "#EAF6E9",
+	        "backgroundTextStyle": "light",
+	        "enablePullDownRefresh": true
+	      }
+	    },
+	    {
+	      "path": "pages/open_redpack",
+	      "style": {
+	        "navigationBarTitleText": "开红包",
+	        "navigationBarTextStyle": "black",
+	        "navigationBarBackgroundColor": "#EAF6E9",
+	        "backgroundColor": "#EAF6E9",
+	        "backgroundTextStyle": "light",
+	        "enablePullDownRefresh": true
+	      }
+	    }
+	  ]
+	}
+  ]
+}

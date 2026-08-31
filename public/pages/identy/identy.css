@@ -1,0 +1,174 @@
+/* public/pages/award/identy/identy.wxss */
+page{
+      background: #f5f5f5;    font-size: 14px;
+}
+.term span{color: #999}
+.fr{display: inline-block;float: right}
+.user-tx {width:50px;height:50px;border-radius: 50%}
+.overf fl{display: inline-block}
+p{display: block}
+.pop-mask {
+    position: fixed;
+    z-index: 1000;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+}
+.com-pop-con {
+    position: fixed;
+    z-index: 5000;
+    width: 77.33%;
+    padding: 20px 15px;
+    top: 90px;
+    left: 50%;
+    margin-left: -38.67%;
+    background-color: #FFFFFF;
+    text-align: center;
+    border-radius: 4px;
+    overflow: hidden;
+    color: #5d5d5d;
+}
+.com-pop-con .close {
+	position: absolute;
+    width: 22px;
+    height: 22px;
+    right: 16px;
+    top: 14px;
+    display: block;
+    -webkit-background-size: 100%; 
+    background-size: 100%; 
+}
+.com-pop-con .close image{
+  width: 100%
+}
+.weui-cell_access .weui-cell__ft:after {
+	height: 8px;
+    width: 8px;
+}
+.opacity5 {
+	opacity: 0.5;
+}
+.sf-privilege .dj-infor {
+	padding: 25px 30px;
+	line-height: 1;
+	background-color: #7f8aef;
+	color: #fff;
+  display: flex;
+  justify-content: space-between
+
+}
+.sf-privilege .dj-infor .cur-dj p:first-child {
+	margin-bottom: 7.5px;
+	font-size: 23px;
+}
+.sf-privilege .dj-infor .cur-dj p:nth-of-type(2) {
+	color: rgba(255,255,255,.5);
+}
+.sf-privilege .term {
+	padding-right: 30px;
+	font-size: 12px;
+	line-height: 50px;
+	text-align: right;
+}
+.sf-privilege .dj-con {
+	margin: 0 15px 0 20px;
+	padding-left: 20px;
+	padding-bottom: 30px;
+	border-left: 1px solid #d8d8d8; 
+}
+.sf-privilege .dj-item {
+	position: relative;
+	margin-bottom: 25px;
+	padding: 20px;
+	border-radius: 4px;
+	background: #fff;
+}
+.sf-privilege .dj-item .circle {
+    display: inline-block;
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    background-color: #d8d8d8;
+    border-radius: 50%;
+    left: -24.5px;
+    top: 50%;
+    margin-top: -4.5px;
+}
+.sf-privilege .dj-item > h4 {
+	margin-bottom: 30px;
+	color: #333;
+	font-size: 20px;
+  display: block
+}
+.sf-privilege .dj-item .txt {
+	color: #5d5d5d;
+	margin-bottom: 10px;
+}
+.sf-privilege .weui-progress {
+	margin-bottom: 19px;
+}
+.sf-privilege .weui-progress__bar {
+	height: 5px;
+}
+.sf-privilege .weui-progress__bar .skin-bg {
+	background: #7f8aef;
+}
+.sf-privilege .oprate {
+  height: 30px;
+  display: block;
+  width: 100%;
+	margin-top: 6px;
+}
+progress{margin-bottom: 19px}
+.sf-privilege .oprate > a {
+	float: right;
+	width: 75px;
+	height: 30px;
+	background-color: #7f8aef;
+	border-radius: 15px;
+	color: #fff;
+	text-align: center;
+	line-height: 30px;
+	font-size: 13px;
+}
+.sf-privilege .oprate a:nth-of-type(2) {
+	margin-right: 20px;
+}
+
+.weui-dialog__bd .sj-sm {
+	height: 254px;
+	overflow-y: auto; 
+	margin: 17px 0 15px;
+	text-align: left;
+}
+.sm-fg {
+	height: 1px;
+    border: 0;
+	background: #e5e5e5;
+}
+.heigest-dj {
+	padding-top: 74px;
+	text-align: center;
+}
+.heigest-dj .bg + p {
+	margin-top: 30px;
+	color: #ccc;
+}
+.upgrade-sm-pop {
+	padding: 0 13px;
+}
+.upgrade-sm-pop h4 {
+	padding: 32px 0 9px;
+	font-size: 18px;
+	line-height: 1;
+	border-bottom: solid 1px #e5e5e5;
+  display: block
+}
+.upgrade-sm-pop .sj-sm {
+    height: 254px;
+    overflow-y: auto;
+    margin: 17px 0 15px;
+    text-align: left;
+}

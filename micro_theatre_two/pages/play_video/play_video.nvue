@@ -1,0 +1,2394 @@
+<template>
+    <view class="page">
+		<!-- 更新：开屏优化 搜索图标加大 -->
+        <!-- 跟手滑动时露出相邻集：swiper 仅显示当前项，需独立预显层 -->
+        <view
+            v-if="showPeekPrevLayer"
+            class="slide-peek"
+            :style="peekPrevLayerStyle"
+        >
+            <view class="slide-peek-body">
+                <image class="slide-peek-poster" :src="dramaCoverSrc(peekPrevIndex)" mode="aspectFill"></image>
+                <video
+                    v-if="episodeUrlAt(peekPrevIndex)"
+                    id="video_peek_prev"
+                    class="video slide-peek-video"
+                    :src="episodeUrlAt(peekPrevIndex)"
+                    :controls="false"
+                    :muted="true"
+                    :loop="true"
+                    :enable-progress-gesture="false"
+                    :show-center-play-btn="false"
+                    object-fit="cover"
+                ></video>
+                <view class="slide-right-actions slide-peek-ui">
+                    <view class="action-item">
+                        <image class="action-img" :src="http_host + '/micro_theatre_two/web/static/images/p-like.png'"></image>
+                        <text class="action-num">{{ formatCount(dramaLikeCountAt(peekPrevIndex)) }}</text>
+                    </view>
+                    <view class="action-item">
+                        <image class="action-img" :src="http_host + '/micro_theatre_two/web/static/images/p-chat.png'"></image>
+                        <text class="action-num">{{ formatCount(commentCountAt(peekPrevIndex)) }}</text>
+                    </view>
+                </view>
+                <view class="slide-bottom-info slide-peek-ui">
+                    <view class="slide-bottom-meta">
+                        <view class="movie-row">
+                            <image class="movie-cover" :src="dramaCoverSrc(peekPrevIndex)" mode="aspectFill"></image>
+                            <text class="movie-name" lines="1">{{ dramaNameAt(peekPrevIndex) }}</text>
+                        </view>
+                        <view class="desc-row">
+                            <text class="desc-text" lines="1">第{{ pickEpisodeOrderFromIndex(peekPrevIndex) }}集 | {{ episodeDescShortAt(peekPrevIndex) }}</text>
+                        </view>
+                    </view>
+                    <view class="movie-title-row">
+                        <text class="movie-title" lines="1">{{ episodeBarTitleAt(peekPrevIndex) }}</text>
+                        <text class="movie-arrow">›</text>
+                    </view>
+                </view>
+            </view>
+        </view>
+        <view
+            v-if="showPeekNextLayer"
+            class="slide-peek"
+            :style="peekNextLayerStyle"
+        >
+            <view class="slide-peek-body">
+                <image class="slide-peek-poster" :src="dramaCoverSrc(peekNextIndex)" mode="aspectFill"></image>
+                <video
+                    v-if="episodeUrlAt(peekNextIndex)"
+                    id="video_peek_next"
+                    class="video slide-peek-video"
+                    :src="episodeUrlAt(peekNextIndex)"
+                    :controls="false"
+                    :muted="true"
+                    :loop="true"
+                    :enable-progress-gesture="false"
+                    :show-center-play-btn="false"
+                    object-fit="cover"
+                ></video>
+                <view class="slide-right-actions slide-peek-ui">
+                    <view class="action-item">
+                        <image class="action-img" :src="http_host + '/micro_theatre_two/web/static/images/p-like.png'"></image>
+                        <text class="action-num">{{ formatCount(dramaLikeCountAt(peekNextIndex)) }}</text>
+                    </view>
+                    <view class="action-item">
+                        <image class="action-img" :src="http_host + '/micro_theatre_two/web/static/images/p-chat.png'"></image>
+                        <text class="action-num">{{ formatCount(commentCountAt(peekNextIndex)) }}</text>
+                    </view>
+                </view>
+                <view class="slide-bottom-info slide-peek-ui">
+                    <view class="slide-bottom-meta">
+                        <view class="movie-row">
+                            <image class="movie-cover" :src="dramaCoverSrc(peekNextIndex)" mode="aspectFill"></image>
+                            <text class="movie-name" lines="1">{{ dramaNameAt(peekNextIndex) }}</text>
+                        </view>
+                        <view class="desc-row">
+                            <text class="desc-text" lines="1">第{{ pickEpisodeOrderFromIndex(peekNextIndex) }}集 | {{ episodeDescShortAt(peekNextIndex) }}</text>
+                        </view>
+                    </view>
+                    <view class="movie-title-row">
+                        <text class="movie-title" lines="1">{{ episodeBarTitleAt(peekNextIndex) }}</text>
+                        <text class="movie-arrow">›</text>
+                    </view>
+                </view>
+            </view>
+        </view>
+        <view class="swiper-drag-wrap" :style="swiperWrapStyle">
+        <swiper
+            class="swiper"
+            :indicator-dots="false"
+            :vertical="true"
+            :current="currentIndex"
+            :duration="swiperDurationMs"
+            easing-function="easeOutCubic"
+            :disable-touch="true"
+            @change="onSwiperChange"
+        >
+            <swiper-item v-for="(item, index) in videoList" :key="item.id" class="swiper-item">
+                <view class="uni-vdplayer">
+                    <!-- 必须添加 :id 属性，否则 createVideoContext 找不到组件 -->
+                    <video
+                        v-if="shouldRenderVideo(index)"
+                        :id="'video_' + index"
+                        :ref="el => setVideoRef(el, index)"
+                        class="video"
+                        :src="item.url"
+                        :controls="false"
+                        :muted="mutedForIndex(index)"
+                        :loop="true"
+                        :enable-progress-gesture="false"
+                        :show-center-play-btn="false"
+                        object-fit="cover"
+                        @error="(e) => onVideoError(index, e)"
+                    ></video>
+                    <view v-if="!shouldRenderVideo(index)" class="placeholder"></view>
+                </view>
+                <view v-if="!showCommentPanel" class="slide-right-actions">
+                        <view class="action-item" @tap.stop="onSlideLike(index)">
+                            <image
+                                class="action-img"
+                                :src="isLikeAt(index) ? (http_host + '/micro_theatre_two/web/static/images/p-like-on.png') : (http_host + '/micro_theatre_two/web/static/images/p-like.png')"
+                            ></image>
+                            <text class="action-num">{{ formatCount(dramaLikeCountAt(index)) }}</text>
+                        </view>
+                        <view class="action-item" @tap.stop="onSlideComment(index)">
+                            <image
+                                class="action-img"
+                                :src="http_host + '/micro_theatre_two/web/static/images/p-chat.png'"
+                            ></image>
+                            <text class="action-num">{{ formatCount(commentCountAt(index)) }}</text>
+                        </view>
+                    </view>
+                    <view v-if="!showCommentPanel" class="slide-bottom-info">
+                        <view class="slide-bottom-meta">
+                            <view class="movie-row">
+                                <image
+                                    class="movie-cover"
+                                    :src="dramaCoverSrc(index)"
+                                    mode="aspectFill"
+                                ></image>
+                                <text class="movie-name" lines="1">{{ dramaNameAt(index) }}</text>
+                            </view>
+                            <view class="desc-row">
+                                <text class="desc-text" lines="1">第{{ pickEpisodeOrderFromIndex(index) }}集 | {{ episodeDescShortAt(index) }}</text>
+                            </view>
+                        </view>
+                        <view class="movie-title-row" @tap.stop="goInfoAt(index)">
+                            <text class="movie-title" lines="1">{{ episodeBarTitleAt(index) }}</text>
+                            <text class="movie-arrow">›</text>
+                        </view>
+                    </view>
+            </swiper-item>
+        </swiper>
+        </view>
+        <!-- 屏幕正中央暂停图标（仅展示） -->
+        <view
+            v-if="videoList.length && currentVideoPaused && !showCommentPanel && !isSwiperDragging && !isSwiperDragAnimating"
+            class="pause-play-screen-center"
+            @tap="toggleCurrentVideoPlayPause"
+        >
+            <image
+                class="pause-play-overlay-img"
+                :src="http_host + '/micro_theatre_two/web/static/images/p-play.png'"
+                mode="aspectFit"
+            ></image>
+        </view>
+        <!-- nvue 原生 video 吞触摸：中间区域用手势层识别上下滑/单击 -->
+        <view
+            v-if="videoList.length && !showCommentPanel"
+            class="video-gesture-layer"
+            @touchstart="onVideoLayerTouchStart"
+            @touchmove="onVideoLayerTouchMove"
+            @touchend="onVideoLayerTouchEnd"
+            @touchcancel="onVideoLayerTouchCancel"
+        ></view>
+
+        <view class="top-category-row">
+            <view class="top-left-spacer"></view>
+            <view class="top-tabs">
+                <view
+                    v-for="item in linkTabs"
+                    :key="item.id"
+                    class="top-tab-item"
+                    @click.stop="openLinkTab(item)"
+                >
+                    <text
+                        class="top-tab-text"
+                        :class="activeLinkId === item.id ? 'top-tab-text-active' : ''"
+                    >{{ item.title }}</text>
+                    <view
+                        class="top-tab-underline"
+                        :class="activeLinkId === item.id ? 'top-tab-underline-active' : ''"
+                    ></view>
+                </view>
+            </view>
+            <view class="top-right" @click.stop="goSearch">
+                <text class="search-icon">⌕</text>
+            </view>
+        </view>
+        <view v-if="pageInitLoading" class="page-init-loading">
+            <loading-indicator
+                class="page-init-spinner"
+                animating="true"
+            ></loading-indicator>
+            <text class="page-init-loading-text">加载中...</text>
+        </view>
+        <!-- 独立层叠上下文：避免 nvue 里 scroll-view/input 与蒙层合成顺序随机 -->
+        <view v-if="showCommentPanel" class="comment-overlay-stack">
+            <view class="comment-stack-mask" @tap.stop="toggleCommentPanel"></view>
+            <view class="comment-stack-panel" :style="commentPanelStyle">
+                <view class="comment-top-bar">
+                    <text class="comment-total-text">{{ commentTotal }}条评论</text>
+                    <view class="comment-collapse-hit" @tap.stop="toggleCommentPanel">
+                        <text class="comment-collapse-arrow">⌃</text>
+                    </view>
+                </view>
+                <scroll-view class="comment-scroll" scroll-y>
+                    <view
+                        v-for="(item, idx) in commentList"
+                        :key="item.id != null ? item.id : 'c_' + idx"
+                        class="comment-cell"
+                    >
+                        <view class="comment-user-row">
+                            <image
+                                class="comment-avatar"
+                                :src="commentRowAvatar(item)"
+                                mode="aspectFill"
+                            ></image>
+                            <text class="comment-username">{{ commentRowUserLabel(item) }}</text>
+                        </view>
+                        <text class="comment-content">{{ commentRowContent(item) }}</text>
+                    </view>
+                    <view v-if="!commentList.length" class="comment-empty">暂无评论</view>
+                </scroll-view>
+                <view class="comment-input-wrap">
+                    <input
+                        class="comment-input"
+                        v-model="commentDraft"
+                        placeholder="我也评论一番!!"
+                        confirm-type="send"
+                        @confirm="submitComment"
+                    />
+                    <view class="comment-send-hit" @tap.stop="submitComment">
+                        <text class="comment-send-btn">发送</text>
+                    </view>
+                </view>
+            </view>
+        </view>
+        <!-- nvue 无法使用 pagecom，读取与个人中心相同的 bottom_list 缓存渲染底栏 -->
+        <view v-if="bottomTabShow && bottomTabItems.length" class="page-bottom-tabbar">
+            <view
+                v-for="(item, idx) in bottomTabItems"
+                :key="'bt_' + idx"
+                class="page-bottom-tab-item"
+                @click="onBottomTabTap(item, idx)"
+            >
+                <image
+                    class="page-bottom-tab-icon"
+                    :src="bottomTabActiveIndex === idx ? item.selimgUrl : item.noimgUrl"
+                ></image>
+                <text
+                    class="page-bottom-tab-text"
+                    :style="{ color: bottomTabActiveIndex === idx ? item.selcolor : item.nocolor }"
+                >{{ item.name }}</text>
+            </view>
+        </view>
+    </view>
+</template>
+
+<script>
+import urlRequest from "@/utils/request.js";
+import api from "@/utils/api.js";
+import * as Common from "@/utils/common.js";
+import * as globalData from "@/utils/config";
+import { getAppCache } from "@/utils/cache.js";
+import {
+  ensureMtLogin,
+  formatMtNeedLoginMsg,
+} from "@/micro_theatre_two/utils/mt_auth.js";
+
+/** 微剧场分包页面（主包如 index_son 不要加 micro_theatre_two 前缀） */
+const MT_SUB_PAGES = [
+    "/pages/index/index",
+    "/pages/play_video/play_video",
+    "/pages/play_video_simple/play_video_simple",
+    "/pages/playlet_info/playlet_info",
+    "/pages/history_search/history_search",
+    "/pages/score/score",
+    "/pages/movie_ticket/movie_ticket",
+    "/pages/purchase_record/purchase_record",
+    "/pages/recharge_record/recharge_record",
+    "/pages/advertisement/advert",
+    "/pages/vip/vip",
+    "/pages/vip/open_vip",
+    "/pages/vip/open_record/open_record",
+    "/pages/app_pay/pay",
+    "/pages/app_pay/callback",
+    "/pages/watch_log/watch_log",
+    "/pages/login/login",
+];
+
+function request(config = {}) {
+    const reqUrl = config.url || "";
+    const reqData = config.data || {};
+    const reqMethod = config.method || "POST";
+    const needToken = config.needToken === true;
+    const needLoading = config.needLoading === true;
+    return urlRequest.request(reqUrl, reqData, reqMethod, needToken, needLoading);
+}
+
+export default {
+    data() {
+        const app = (typeof getApp === "function" && getApp()) || {};
+        const gd = app.globalData || {};
+        const hostFromVuex = this.vuex_apiUrl != null && this.vuex_apiUrl !== "" ? this.vuex_apiUrl : "";
+        const baseHost = String(hostFromVuex || globalData.apiUrl || gd.http_host || "").replace(/\/+$/, "");
+        return {
+            currentIndex: 0,
+            videoList: [],
+            episodeList: [],
+            dramaId: "",
+            dramaInfo: {
+                id: 0,
+                name: "",
+                description: "",
+                cover_image: "",
+                like_count: 0,
+                favorite_count: 0,
+            },
+            currentDramaTitle: "短剧",
+            currentDramaDesc: "",
+            http_host: baseHost,
+            recommendH5Link: "/micro_theatre_two/web/index.php?m=index&a=play_video",
+            recommendMiniLink: "/micro_theatre_two/pages/play_video/play_video",
+            linkTabs: [
+                {
+                    id: "recommend",
+                    title: "推荐",
+                    h5_link: "/micro_theatre_two/web/index.php?m=index&a=play_video",
+                    mini_link: "/micro_theatre_two/pages/play_video/play_video",
+                },
+            ],
+            activeLinkId: "recommend",
+            videoContexts: {},
+            videoRefs: {},
+            screenHeight: 0,
+            touchStartY: 0,
+            touchStartX: 0,
+            touchMoveY: 0,
+            swipeThreshold: 50,
+            tapThreshold: 14,
+            currentVideoPaused: false,
+            isAutoChange: true,
+            isLike: false,
+            commentTotal: 0,
+            commentDraft: "",
+            showCommentPanel: false,
+            commentList: [],
+            bottomTabShow: false,
+            bottomTabItems: [],
+            bottomTabActiveIndex: 0,
+            /** onHide 因跳转/切后台暂停，onShow 再恢复播放 */
+            _suspendPlayForNav: false,
+            _playAtIndexTimer: null,
+            _pvSkipSwiperChangeOnce: false,
+            swiperDurationMs: 300,
+            _swiperAnimTimer: null,
+            swiperDragOffsetY: 0,
+            isSwiperDragging: false,
+            isSwiperDragAnimating: false,
+            _dragAnimTimer: null,
+            swipeEdgeResistance: 0.35,
+            peekVideoContexts: {},
+            /** 按下即挂载相邻集预显层，便于提前加载视频 */
+            swiperPeekPreheat: false,
+            pageInitLoading: true,
+        };
+    },
+    computed: {
+        commentPanelStyle() {
+            const hasBottom =
+                this.bottomTabShow && this.bottomTabItems.length > 0;
+            return {
+                bottom: hasBottom ? "120rpx" : "0",
+            };
+        },
+        peekPrevIndex() {
+            const i = Math.floor(Number(this.currentIndex)) || 0;
+            return i > 0 ? i - 1 : -1;
+        },
+        peekNextIndex() {
+            const i = Math.floor(Number(this.currentIndex)) || 0;
+            const len = (this.videoList || []).length;
+            return i < len - 1 ? i + 1 : -1;
+        },
+        swipeViewportHeight() {
+            const h = Number(this.screenHeight) || 0;
+            return h > 0 ? h : 667;
+        },
+        showPeekPrevLayer() {
+            return this.peekPrevIndex >= 0 && (this.swiperPeekPreheat || Number(this.swiperDragOffsetY) > 0);
+        },
+        showPeekNextLayer() {
+            return this.peekNextIndex >= 0 && (this.swiperPeekPreheat || Number(this.swiperDragOffsetY) < 0);
+        },
+        peekPrevLayerStyle() {
+            const h = this.swipeViewportHeight;
+            const dy = Number(this.swiperDragOffsetY) || 0;
+            const dur = this.isSwiperDragAnimating ? Number(this.swiperDurationMs) || 300 : 0;
+            return {
+                transform: "translateY(" + (dy - h) + "px)",
+                transitionDuration: dur + "ms",
+            };
+        },
+        peekNextLayerStyle() {
+            const h = this.swipeViewportHeight;
+            const dy = Number(this.swiperDragOffsetY) || 0;
+            const dur = this.isSwiperDragAnimating ? Number(this.swiperDurationMs) || 300 : 0;
+            return {
+                transform: "translateY(" + (dy + h) + "px)",
+                transitionDuration: dur + "ms",
+            };
+        },
+        swiperWrapStyle() {
+            const y = Number(this.swiperDragOffsetY) || 0;
+            const dur = this.isSwiperDragAnimating ? Number(this.swiperDurationMs) || 300 : 0;
+            return {
+                transform: "translateY(" + y + "px)",
+                transitionDuration: dur + "ms",
+            };
+        },
+        visibleIndexes() {
+            const indexes = [this.currentIndex];
+            if (this.currentIndex > 0) indexes.push(this.currentIndex - 1);
+            if (this.currentIndex < this.videoList.length - 1) indexes.push(this.currentIndex + 1);
+            return new Set(indexes);
+        },
+        likeCount() {
+            const cur = Number(this.dramaInfo.like_count != null ? this.dramaInfo.like_count : this.dramaInfo.favorite_count) || 0;
+            return cur;
+        },
+        descShort() {
+            const t = String(this.currentDramaDesc || "").trim();
+            if (!t) return "";
+            if (t.length <= 100) return t;
+            return t.slice(0, 100) + "...";
+        },
+        /** 当前条在剧内的集序号（来自接口 episode_order），不是推荐流里的滑动下标 */
+        displayEpisodeNo() {
+            return this.pickEpisodeOrderFromIndex(this.currentIndex);
+        },
+        /** 该剧总集数：来自 drama_info / drama_detail，不是本页可滑条数 */
+        displayTotalEpisodes() {
+            const d = this.dramaInfo || {};
+            const raw = d.total_episodes != null ? d.total_episodes : d.episodes != null ? d.episodes : d.episodes_count != null ? d.episodes_count : d.episode_count;
+            const n = Number(raw);
+            return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+        },
+        episodeBarTitle() {
+            const title = this.currentDramaTitle || "短剧";
+            const ep = this.displayEpisodeNo;
+            const total = this.displayTotalEpisodes;
+            if (total > 0) {
+                return title + " · 全" + total + "集 · 第" + ep + "集";
+            }
+            return title + " · 第" + ep + "集";
+        },
+    },
+    async onLoad(res) {
+        const systemInfo = uni.getSystemInfoSync();
+        this.screenHeight = systemInfo.windowHeight;
+        this.pageInitLoading = true;
+        const rawEpisodeNo = Number(res && res.num);
+        const requestedIndex =
+            Number.isFinite(rawEpisodeNo) && rawEpisodeNo > 0
+                ? Math.floor(rawEpisodeNo - 1)
+                : 0;
+        const linksTask = this.loadIndexSetLinks();
+        try {
+            await this.fetchFreeEpisodes();
+        } finally {
+            this.pageInitLoading = false;
+        }
+        linksTask.catch(function () {});
+        const nextIndex = this.normalizeEpisodeIndex(requestedIndex);
+        this.currentIndex = nextIndex;
+        this.schedulePlayAtIndex(nextIndex);
+    },
+    onReady() {
+        if (this.videoList.length) {
+            this.initVideoContexts();
+        }
+        setTimeout(() => this.initPagecomBottom(), 50);
+    },
+    onShow() {
+        uni.$emit("onShow");
+        setTimeout(() => this.initPagecomBottom(), 50);
+        if (!this._suspendPlayForNav) return;
+        this._suspendPlayForNav = false;
+        this.schedulePlayAtIndex(this.currentIndex);
+    },
+    onHide() {
+        this.suspendPlaybackForNav();
+    },
+    onUnload() {
+        this.suspendPlaybackForNav();
+    },
+    methods: {
+        getPageCache() {
+            if (this.$cache && typeof this.$cache.get === "function") {
+                return this.$cache;
+            }
+            return getAppCache();
+        },
+        getPlayVideoPageUrl() {
+            const routes = getCurrentPages();
+            let curRoute =
+                routes.length && routes[routes.length - 1].route
+                    ? routes[routes.length - 1].route
+                    : "micro_theatre_two/pages/play_video/play_video";
+            if (curRoute.indexOf("pages") === 0) {
+                curRoute = "/" + curRoute;
+            }
+            if (curRoute.charAt(0) !== "/") {
+                curRoute = "/" + curRoute;
+            }
+            return curRoute;
+        },
+        urlShowBottomOnPage(release, pageUrl) {
+            if (!release || !release.length || !pageUrl) return false;
+            let status = false;
+            let project = "";
+            const altUrl =
+                pageUrl.charAt(0) === "/" ? pageUrl.slice(1) : "/" + pageUrl;
+            for (let i = 0; i < release.length; i++) {
+                const fun = release[i].funs;
+                if (!fun) continue;
+                const proFun = fun + "/";
+                if (fun.indexOf("/") !== -1) {
+                    if (
+                        pageUrl === fun ||
+                        altUrl === fun ||
+                        pageUrl === "/" + fun ||
+                        altUrl === "/" + fun
+                    ) {
+                        status = true;
+                        break;
+                    }
+                }
+                if (
+                    pageUrl.indexOf("pages") === 1 ||
+                    pageUrl.indexOf("public") === 0
+                ) {
+                    if (pageUrl.indexOf(fun) !== -1) {
+                        status = true;
+                        break;
+                    }
+                } else if (pageUrl.indexOf(proFun) === 1) {
+                    project = proFun;
+                } else if (project !== "" && pageUrl.indexOf(project) === 1) {
+                    if (fun.includes(",")) {
+                        const tmp = fun.split(",");
+                        for (let v = 0; v < tmp.length; v++) {
+                            if (pageUrl.includes(tmp[v])) {
+                                status = true;
+                                break;
+                            }
+                        }
+                        break;
+                    } else if (pageUrl.indexOf(fun) !== -1) {
+                        status = true;
+                        break;
+                    }
+                }
+            }
+            return status;
+        },
+        applyBottomList(buttomData, pageUrl) {
+            const list = buttomData && buttomData.content ? buttomData.content : [];
+            const release = buttomData && buttomData.release ? buttomData.release : [];
+            let isShow = this.urlShowBottomOnPage(release, pageUrl);
+            if (
+                !isShow &&
+                list.length &&
+                pageUrl.indexOf("play_video/play_video") !== -1
+            ) {
+                isShow = true;
+            }
+            let activeIndex = 0;
+            let hasActive = false;
+            const items = [];
+            for (let i = 0; i < list.length; i++) {
+                const item = list[i];
+                const active =
+                    item.url === pageUrl ||
+                    (item.url && item.url.indexOf(pageUrl) !== -1);
+                if (active) {
+                    activeIndex = i;
+                    hasActive = true;
+                }
+                items.push({
+                    name: item.name,
+                    url: item.url,
+                    selimgUrl: item.selimgUrl,
+                    noimgUrl: item.noimgUrl,
+                    selcolor: item.selcolor,
+                    nocolor: item.nocolor,
+                });
+            }
+            if (!hasActive) {
+                const sel = this.getPageCache().get("sel_bottom_val");
+                activeIndex = sel != null && sel !== "" ? Number(sel) : 0;
+            }
+            this.bottomTabShow = isShow;
+            this.bottomTabItems = items;
+            this.bottomTabActiveIndex = activeIndex;
+        },
+        initPagecomBottom() {
+            const pageUrl = this.getPlayVideoPageUrl();
+            const cache = this.getPageCache();
+            const cached = cache.get("bottom_list");
+            if (cached && cached !== "" && cached !== "no_bottom" && cached.content) {
+                this.applyBottomList(cached, pageUrl);
+                return;
+            }
+            if (!api || !api.getBottomDiyTemplate) return;
+            const appExamine =
+                globalData.appExamine != null ? globalData.appExamine : "";
+            api
+                .getBottomDiyTemplate({ app_examine: appExamine })
+                .then((data) => {
+                    if (!data || !data.content) {
+                        cache.set("bottom_list", "no_bottom");
+                        return;
+                    }
+                    cache.set("bottom_list", data);
+                    this.applyBottomList(data, pageUrl);
+                })
+                .catch(() => {});
+        },
+        onBottomTabTap(item, index) {
+            this.bottomTabActiveIndex = index;
+            this.getPageCache().set("sel_bottom_val", index, 800);
+            const link = item && item.url ? String(item.url).trim() : "";
+            if (!link || link === "javascript:void(0)") return;
+            const isH5 =
+                (link.indexOf("m=") !== -1 && link.indexOf("a=") !== -1) ||
+                link.indexOf("http") === 0 ||
+                link.indexOf(".html") !== -1 ||
+                link.indexOf(".php") !== -1;
+            if (isH5) {
+                const webUrl = link.indexOf("http") === 0 ? link : this.http_host + link;
+                uni.setStorageSync("weburl", webUrl);
+                uni.redirectTo({ url: "/pages/webview/webview?is_bottom=1" });
+                return;
+            }
+            let url = link;
+            if (url.charAt(0) !== "/") url = "/" + url;
+            uni.redirectTo({ url });
+        },
+        noop() {},
+        commentRowContent(row) {
+            if (!row || typeof row !== "object") return "";
+            return String(row.content || row.comment || row.text || "").trim();
+        },
+        commentRowUserLabel(row) {
+            if (!row || typeof row !== "object") return "用户";
+            const n =
+                row.user_name ||
+                row.nickname ||
+                row.weixin_name ||
+                row.name ||
+                "";
+            const s = String(n).trim();
+            return s || "用户";
+        },
+        commentRowAvatar(row) {
+            const host = String(this.http_host || "").replace(/\/+$/, "");
+            const fallback =
+                host + "/micro_theatre_two/web/static/images/default-avatar.png";
+            if (!row || typeof row !== "object") return fallback;
+            const raw =
+                row.headimgurl ||
+                row.avatar ||
+                row.user_avatar ||
+                "";
+            const url = String(raw || "").trim();
+            if (!url) return fallback;
+            if (/^https?:\/\//i.test(url)) return url;
+            const path = url.replace(/\\/g, "/").replace(/^\/+/, "");
+            return host ? host + "/" + path : fallback;
+        },
+        normalizeEpisodeIndex(index) {
+            const parsedIndex = Number(index);
+            if (!Number.isFinite(parsedIndex) || parsedIndex < 0) return 0;
+            if (!this.videoList || this.videoList.length === 0) return Math.floor(parsedIndex);
+            if (parsedIndex >= this.videoList.length) return this.videoList.length - 1;
+            return Math.floor(parsedIndex);
+        },
+        getEpisodeVideoUrl(ep) {
+            if (!ep || typeof ep !== "object") return "";
+            const direct = ep.video_url || ep.videoUrl || ep.url || ep.video || ep.file_url || "";
+            if (direct && typeof direct === "string") {
+                const s = direct.trim();
+                if (!s) return "";
+                if (s.startsWith("http")) return s;
+                const host = (this.http_host || "").replace(/\/$/, "");
+                if (!host) return s;
+                return s.startsWith("/") ? host + s : host + "/resources/" + s;
+            }
+            const filePath = ep.file_path || ep.filePath || ep.path || "";
+            if (filePath && typeof filePath === "string") {
+                const fp = filePath.trim();
+                if (!fp) return "";
+                if (fp.startsWith("http")) return fp;
+                const host = (this.http_host || "").replace(/\/$/, "");
+                if (!host) return fp;
+                return fp.startsWith("/") ? host + fp : host + "/resources/" + fp;
+            }
+            return "";
+        },
+        getStaticFallbackVideoList() {
+            const base = (this.http_host || "").replace(/\/$/, "");
+            const names = ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"];
+            return names.map((n, idx) => ({
+                id: `fallback_${idx}`,
+                url: `${base}/micro_theatre_two/web/static/video/${n}.mp4`,
+            }));
+        },
+        shuffleEpisodeRows(rows) {
+            const list = Array.isArray(rows) ? rows.slice() : [];
+            for (let i = list.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const t = list[i];
+                list[i] = list[j];
+                list[j] = t;
+            }
+            return list;
+        },
+        pickEpisodeOrderFromIndex(index) {
+            const ep = this.episodeList && this.episodeList[index];
+            if (!ep || typeof ep !== "object") {
+                return Math.max(1, Number(index) + 1 || 1);
+            }
+            const raw = ep.episode_order != null ? ep.episode_order : ep.episode_no != null ? ep.episode_no : ep.num != null ? ep.num : ep.sort;
+            const n = Number(raw);
+            if (Number.isFinite(n) && n > 0) {
+                return Math.floor(n);
+            }
+            return Math.max(1, Number(index) + 1 || 1);
+        },
+        getDramaAt(index) {
+            const ep = this.episodeList && this.episodeList[index];
+            if (!ep || typeof ep !== "object") return {};
+            return ep.drama_info || ep.dramaInfo || ep.drama || {};
+        },
+        dramaCoverSrc(index) {
+            const cover = String((this.getDramaAt(index).cover_image || "")).trim();
+            const fallback = this.http_host + "/micro_theatre_two/web/static/images/movie.png";
+            if (!cover) return fallback;
+            if (/^https?:\/\//i.test(cover)) return cover;
+            const host = String(this.http_host || "").replace(/\/+$/, "");
+            const path = cover.replace(/\\/g, "/").replace(/^\/+/, "");
+            return host ? host + "/" + path : fallback;
+        },
+        dramaNameAt(index) {
+            return this.getDramaAt(index).name || "短剧";
+        },
+        episodeDescShortAt(index) {
+            const t = String(this.getDramaAt(index).description || "").replace(/<[^>]+>/g, "").trim();
+            if (!t) return "";
+            if (t.length <= 32) return t;
+            return t.slice(0, 32) + "...";
+        },
+        episodeBarTitleAt(index) {
+            const title = this.dramaNameAt(index);
+            const ep = this.pickEpisodeOrderFromIndex(index);
+            const d = this.getDramaAt(index);
+            const raw = d.total_episodes != null ? d.total_episodes : d.episodes != null ? d.episodes : d.episodes_count != null ? d.episodes_count : d.episode_count;
+            const total = Number(raw);
+            if (Number.isFinite(total) && total > 0) {
+                return title + " · 全" + Math.floor(total) + "集 · 第" + ep + "集";
+            }
+            return title + " · 第" + ep + "集";
+        },
+        dramaLikeCountAt(index) {
+            const d = this.getDramaAt(index);
+            if (index === this.currentIndex) {
+                return Number(this.dramaInfo.like_count != null ? this.dramaInfo.like_count : this.dramaInfo.favorite_count) || 0;
+            }
+            return Number(d.like_count != null ? d.like_count : d.favorite_count) || 0;
+        },
+        isLikeAt(index) {
+            if (index === this.currentIndex) return this.isLike;
+            return Number(this.getDramaAt(index).isLike) === 1;
+        },
+        commentCountAt(index) {
+            if (index === this.currentIndex) return this.commentTotal;
+            const d = this.getDramaAt(index);
+            const n = Number(d.comment_count != null ? d.comment_count : d.comment_total != null ? d.comment_total : d.comments_count);
+            return Number.isFinite(n) && n > 0 ? n : 0;
+        },
+        syncDramaFromIndex(index) {
+            const ep = this.episodeList && this.episodeList[index];
+            if (!ep) return;
+            const drama = this.getDramaAt(index);
+            const nextDramaId = ep.drama_id || drama.id || drama.drama_id || "";
+            if (nextDramaId) this.dramaId = String(nextDramaId);
+            this.applyDramaInfo(drama);
+        },
+        onSlideLike(index) {
+            if (index !== this.currentIndex) return;
+            this.syncDramaFromIndex(index);
+            this.toggleLike();
+        },
+        onSlideComment(index) {
+            if (index !== this.currentIndex) return;
+            this.syncDramaFromIndex(index);
+            this.toggleCommentPanel();
+        },
+        applyDramaInfo(info) {
+            if (!info || typeof info !== "object") return;
+            this.dramaInfo = Object.assign({}, this.dramaInfo, info);
+            if (typeof info.isLike !== "undefined") {
+                this.isLike = Number(info.isLike) === 1;
+            }
+            this.currentDramaTitle = info.name || this.currentDramaTitle || "短剧";
+            const desc = String(info.description || "").replace(/<[^>]+>/g, "");
+            this.currentDramaDesc = desc || this.currentDramaDesc;
+        },
+        async fetchFreeEpisodes() {
+            try {
+                const res = await request({
+                    url: "/micro_theatre_two/web/index.php?m=index_data&a=get_free_episode&xdebug=xdebug",
+                    method: "POST",
+                    data: {},
+                });
+                if (res && res.errcode === 0 && Array.isArray(res.data)) {
+                    const episodes = this.shuffleEpisodeRows(res.data);
+                    this.episodeList = episodes;
+                    const mapped = episodes
+                        .map((ep, idx) => ({
+                          id: ep.id || ep.episode_id || `ep_${idx}`,
+                            url: this.getEpisodeVideoUrl(ep),
+                        }))
+                        .filter((item) => !!item.url);
+                    this.videoList = mapped.length ? mapped : this.getStaticFallbackVideoList();
+                    const firstEp = episodes[0] || {};
+                    const drama = firstEp.drama_info || firstEp.dramaInfo || firstEp.drama || {};
+                    const nextDramaId = firstEp.drama_id || drama.id || drama.drama_id || "";
+                    this.dramaId = nextDramaId ? String(nextDramaId) : "";
+                    this.applyDramaInfo(drama);
+                    if (this.dramaId) {
+                        this.fetchDramaDetail();
+                        this.fetchCommentTotal();
+                        this.fetchCommentList();
+                    }
+                    this.$nextTick(() => {
+                        this.initVideoContexts();
+                    });
+                    return;
+                }
+            } catch (e) {}
+            this.videoList = this.getStaticFallbackVideoList();
+            this.episodeList = [];
+            this.$nextTick(() => {
+                this.initVideoContexts();
+            });
+        },
+        async fetchDramaDetail() {
+            if (!this.dramaId) return;
+            try {
+                const res = await request({
+                    url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_detail",
+                    method: "POST",
+                    needToken: true,
+                    data: {
+                        id: this.dramaId,
+                        user_id: globalData.user_id,
+                    },
+                });
+                if (res && res.errcode === 0 && res.data && res.data.info) {
+                    this.applyDramaInfo(res.data.info);
+                }
+            } catch (e) {}
+        },
+        async fetchCommentTotal() {
+            if (!this.dramaId) return;
+            try {
+                const res = await request({
+                    url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_comments",
+                    method: "POST",
+                    data: {
+                        drama_id: this.dramaId,
+                        page: 1,
+                        limit: 1,
+                        page_size: 1,
+                    },
+                });
+                if (res && res.errcode === 0 && res.data) {
+                    const total = Number(res.data.count) || Number(res.data.total) || Number(res.data.total_count) || (Array.isArray(res.data.list) ? res.data.list.length : 0);
+                    this.commentTotal = total || 0;
+                }
+            } catch (e) {}
+        },
+        async fetchCommentList() {
+            if (!this.dramaId) return;
+            try {
+                const res = await request({
+                    url: "/micro_theatre_two/web/index.php?m=index_data&a=drama_comments",
+                    method: "POST",
+                    data: {
+                        drama_id: this.dramaId,
+                        page: 1,
+                        limit: 20,
+                        page_size: 20,
+                    },
+                });
+                if (res && res.errcode === 0 && res.data && Array.isArray(res.data.list)) {
+                    this.commentList = res.data.list
+                        .filter((row) => {
+                            const t = String(
+                                row &&
+                                    (row.content || row.comment || row.text || "")
+                            ).trim();
+                            return !!t;
+                        })
+                        .map((row) =>
+                            typeof row === "object" && row
+                                ? row
+                                : { content: String(row || "") }
+                        );
+                }
+            } catch (e) {}
+        },
+        async loadIndexSetLinks() {
+            try {
+                const res = await request({
+                    url: "/micro_theatre_two/web/index.php?m=index_data&a=index_set_link_list",
+                    method: "POST",
+                    data: {},
+                });
+                if (res && res.errcode === 0 && Array.isArray(res.data)) {
+                    const list = res.data.slice();
+                    list.sort((a, b) => {
+                        const as = Number(a && a.sort != null ? a.sort : 0);
+                        const bs = Number(b && b.sort != null ? b.sort : 0);
+                        if (bs !== as) return bs - as;
+                        const aid = Number(a && a.id != null ? a.id : 0);
+                        const bid = Number(b && b.id != null ? b.id : 0);
+                        return aid - bid;
+                    });
+                    this.linkTabs = list.map((row, idx) => ({
+                        id: String(row.id != null ? row.id : `link_${idx}`),
+                        title: row.title && String(row.title).trim() ? String(row.title).trim() : "入口",
+                        h5_link: row.h5_link || row.url || "",
+                        mini_link: row.mini_link || row.app_url || "",
+                    }));
+                    const hitRecommend = this.linkTabs.find((item) => String(item.h5_link || "") === this.recommendH5Link || String(item.mini_link || "") === this.recommendMiniLink);
+                    this.activeLinkId = hitRecommend ? hitRecommend.id : (this.linkTabs[0] && this.linkTabs[0].id) || "recommend";
+                    return;
+                }
+            } catch (e) {}
+            this.linkTabs = [
+                {
+                    id: "recommend",
+                    title: "推荐",
+                    h5_link: this.recommendH5Link,
+                    mini_link: this.recommendMiniLink,
+                },
+            ];
+            this.activeLinkId = "recommend";
+        },
+        episodeUrlAt(index) {
+            const idx = Math.floor(Number(index));
+            if (!Number.isFinite(idx) || idx < 0) return "";
+            const item = this.videoList && this.videoList[idx];
+            return item && item.url ? String(item.url) : "";
+        },
+
+        shouldRenderVideo(index) {
+            return this.visibleIndexes.has(index);
+        },
+
+        preloadPeekVideo(side, index) {
+            if (this._suspendPlayForNav) return;
+            if (side === "prev" && !this.showPeekPrevLayer) return;
+            if (side === "next" && !this.showPeekNextLayer) return;
+            const videoId = side === "prev" ? "video_peek_prev" : "video_peek_next";
+            const idx = Math.floor(Number(index));
+            if (!Number.isFinite(idx) || idx < 0 || !this.episodeUrlAt(idx)) return;
+            try {
+                const ctx = uni.createVideoContext(videoId, this);
+                if (!ctx) return;
+                this.peekVideoContexts[side] = ctx;
+                try {
+                    ctx.play();
+                } catch (e1) {}
+                const vm = this;
+                setTimeout(function () {
+                    if (vm._suspendPlayForNav) {
+                        vm.pausePeekVideos();
+                        return;
+                    }
+                    const c = vm.peekVideoContexts[side];
+                    if (!c) return;
+                    try {
+                        c.pause();
+                    } catch (e2) {}
+                    try {
+                        c.seek(0);
+                    } catch (e3) {}
+                }, 120);
+            } catch (e) {}
+        },
+
+        prepareAdjacentSlidesOnDrag() {
+            const vm = this;
+            vm.$nextTick(function () {
+                setTimeout(function () {
+                    const pi = vm.peekPrevIndex;
+                    const ni = vm.peekNextIndex;
+                    if (pi >= 0 && vm.showPeekPrevLayer) {
+                        vm.ensureVideoContext(pi);
+                        vm.preloadPeekVideo("prev", pi);
+                    }
+                    if (ni >= 0 && vm.showPeekNextLayer) {
+                        vm.ensureVideoContext(ni);
+                        vm.preloadPeekVideo("next", ni);
+                    }
+                }, 32);
+            });
+        },
+
+        setVideoRef(el, index) {
+            if (el) {
+                this.videoRefs[index] = el;
+                this.ensureVideoContext(index);
+            }
+        },
+
+        mutedForIndex(index) {
+            return index !== this.currentIndex;
+        },
+
+        clearSwiperDragTimer() {
+            if (this._dragAnimTimer) {
+                clearTimeout(this._dragAnimTimer);
+                this._dragAnimTimer = null;
+            }
+        },
+
+        canSwipeToPrev() {
+            return this.currentIndex > 0;
+        },
+
+        canSwipeToNext() {
+            const len = (this.videoList || []).length;
+            return len > 0 && this.currentIndex < len - 1;
+        },
+
+        applySwipeDragOffset(deltaY) {
+            let dy = Number(deltaY) || 0;
+            const resist = Number(this.swipeEdgeResistance) || 0.35;
+            if (dy > 0 && !this.canSwipeToPrev()) {
+                dy = dy * resist;
+            }
+            if (dy < 0 && !this.canSwipeToNext()) {
+                dy = dy * resist;
+            }
+            this.swiperDragOffsetY = dy;
+        },
+
+        getSwipeViewportHeight() {
+            const h = Number(this.screenHeight) || 0;
+            if (h > 0) return h;
+            try {
+                const info = uni.getSystemInfoSync();
+                return Number(info.windowHeight) || 667;
+            } catch (e) {
+                return 667;
+            }
+        },
+
+        animateSwiperDragTo(targetY, direction) {
+            this.clearSwiperDragTimer();
+            this.isSwiperDragging = false;
+            this.isSwiperDragAnimating = true;
+            this.swiperDragOffsetY = targetY;
+            const animMs = Number(this.swiperDurationMs) || 300;
+            const vm = this;
+            const dir = direction == null ? 0 : Number(direction);
+            vm._dragAnimTimer = setTimeout(function () {
+                vm._dragAnimTimer = null;
+                vm.isSwiperDragAnimating = false;
+                if (dir === 1 && vm.canSwipeToNext()) {
+                    vm.commitIndexSwitchAfterDrag(vm.currentIndex, vm.currentIndex + 1);
+                    return;
+                }
+                if (dir === -1 && vm.canSwipeToPrev()) {
+                    vm.commitIndexSwitchAfterDrag(vm.currentIndex, vm.currentIndex - 1);
+                    return;
+                }
+                vm.swiperDragOffsetY = 0;
+                vm.swiperPeekPreheat = false;
+                vm.pausePeekVideos();
+            }, animMs + 20);
+        },
+
+        async commitIndexSwitchAfterDrag(prevIndex, targetIndex) {
+            const max = (this.videoList || []).length - 1;
+            if (max < 0) return;
+            const prev = Math.min(Math.max(Math.floor(Number(prevIndex)) || 0, 0), max);
+            const curIndex = Math.min(Math.max(Math.floor(Number(targetIndex)) || 0, 0), max);
+            if (curIndex === prev) {
+                this.swiperDragOffsetY = 0;
+                return;
+            }
+
+            if (this._swiperAnimTimer) {
+                clearTimeout(this._swiperAnimTimer);
+                this._swiperAnimTimer = null;
+            }
+
+            if (prev >= 0) {
+                this.pauseVideo(prev);
+                const prevCtx = this.videoContexts[prev] || this.ensureVideoContext(prev);
+                if (prevCtx) {
+                    try {
+                        prevCtx.seek(0);
+                    } catch (err) {}
+                }
+            }
+
+            this.swiperDragOffsetY = 0;
+            this._pvSkipSwiperChangeOnce = true;
+            const savedDur = this.swiperDurationMs;
+            this.swiperDurationMs = 0;
+            this.currentIndex = curIndex;
+            this.currentVideoPaused = false;
+            await this.$nextTick();
+            this.swiperDurationMs = savedDur;
+            await this.finishSwiperSwitch(curIndex);
+        },
+
+        onVideoLayerTouchStart(e) {
+            if (this.isSwiperDragAnimating) return;
+            this.clearSwiperDragTimer();
+            const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+            if (!touch) return;
+            this.isSwiperDragging = false;
+            this.swiperDragOffsetY = 0;
+            this.touchStartY = touch.pageY;
+            this.touchStartX = touch.pageX;
+            this.touchMoveY = touch.pageY;
+        },
+
+        onVideoLayerTouchMove(e) {
+            if (this.isSwiperDragAnimating) return;
+            const touch = e.touches && e.touches[0];
+            if (!touch) return;
+            this.touchMoveY = touch.pageY;
+            const deltaY = touch.pageY - this.touchStartY;
+            const deltaX = touch.pageX - this.touchStartX;
+            const absY = Math.abs(deltaY);
+            const absX = Math.abs(deltaX);
+            if (absY > absX && absY > 8) {
+                if (!this.isSwiperDragging) {
+                    this.swiperPeekPreheat = true;
+                    this.prepareAdjacentSlidesOnDrag();
+                }
+                this.isSwiperDragging = true;
+            }
+            if (!this.isSwiperDragging) return;
+            this.applySwipeDragOffset(deltaY);
+        },
+
+        onVideoLayerTouchEnd(e) {
+            if (this.isSwiperDragAnimating) return;
+            const touch = e.changedTouches && e.changedTouches[0];
+            if (!touch) {
+                this.isSwiperDragging = false;
+                this.swiperDragOffsetY = 0;
+                return;
+            }
+            const deltaY = touch.pageY - this.touchStartY;
+            const deltaX = touch.pageX - this.touchStartX;
+            const absY = Math.abs(deltaY);
+            const absX = Math.abs(deltaX);
+            const isTap = absY < this.tapThreshold && absX < this.tapThreshold;
+            if (isTap) {
+                this.isSwiperDragging = false;
+                this.swiperDragOffsetY = 0;
+                this.swiperPeekPreheat = false;
+                this.pausePeekVideos();
+                this.toggleCurrentVideoPlayPause();
+                return;
+            }
+            if (!this.isSwiperDragging || absY <= absX) {
+                this.isSwiperDragging = false;
+                if (this.swiperDragOffsetY !== 0) {
+                    this.animateSwiperDragTo(0, 0);
+                }
+                return;
+            }
+            const h = this.getSwipeViewportHeight();
+            if (absY < this.swipeThreshold) {
+                this.animateSwiperDragTo(0, 0);
+                return;
+            }
+            if (deltaY < 0 && this.canSwipeToNext()) {
+                this.animateSwiperDragTo(-h, 1);
+                return;
+            }
+            if (deltaY > 0 && this.canSwipeToPrev()) {
+                this.animateSwiperDragTo(h, -1);
+                return;
+            }
+            this.animateSwiperDragTo(0, 0);
+        },
+
+        onVideoLayerTouchCancel() {
+            if (this.isSwiperDragAnimating) return;
+            this.isSwiperDragging = false;
+            if (this.swiperDragOffsetY !== 0) {
+                this.animateSwiperDragTo(0, 0);
+            }
+        },
+
+        ensureVideoContext(index) {
+            const idx = Math.floor(Number(index));
+            if (!Number.isFinite(idx) || idx < 0) return null;
+            if (this.videoContexts[idx]) return this.videoContexts[idx];
+            try {
+                const ctx = uni.createVideoContext("video_" + idx, this);
+                if (ctx) {
+                    this.videoContexts[idx] = ctx;
+                    return ctx;
+                }
+            } catch (e) {}
+            return null;
+        },
+
+        initVideoContexts() {
+            const indexes = Array.from(this.visibleIndexes || []);
+            for (let i = 0; i < indexes.length; i++) {
+                this.ensureVideoContext(indexes[i]);
+            }
+        },
+
+        clearPendingPlaySchedule() {
+            if (this._playAtIndexTimer) {
+                clearTimeout(this._playAtIndexTimer);
+                this._playAtIndexTimer = null;
+            }
+        },
+
+        pausePeekVideos() {
+            const sides = ["prev", "next"];
+            for (let s = 0; s < sides.length; s++) {
+                const side = sides[s];
+                const ctx = this.peekVideoContexts[side];
+                if (!ctx) continue;
+                try {
+                    if (typeof ctx.stop === "function") {
+                        ctx.stop();
+                    }
+                } catch (e1) {}
+                try {
+                    if (typeof ctx.pause === "function") {
+                        ctx.pause();
+                    }
+                } catch (e2) {}
+            }
+            this.peekVideoContexts = {};
+        },
+
+        /** 跳转搜索/详情、切后台：停播并取消待执行的 schedulePlay */
+        suspendPlaybackForNav() {
+            this._suspendPlayForNav = true;
+            this.clearPendingPlaySchedule();
+            this.clearSwiperDragTimer();
+            if (this._swiperAnimTimer) {
+                clearTimeout(this._swiperAnimTimer);
+                this._swiperAnimTimer = null;
+            }
+            this.swiperPeekPreheat = false;
+            this.isSwiperDragging = false;
+            this.isSwiperDragAnimating = false;
+            this.swiperDragOffsetY = 0;
+            this.pauseAllVideos();
+        },
+
+        schedulePlayAtIndex(index) {
+            if (this._suspendPlayForNav) return;
+            const idx = Math.floor(Number(index));
+            if (!Number.isFinite(idx) || idx < 0) return;
+            this.clearPendingPlaySchedule();
+            this.$nextTick(() => {
+                this._playAtIndexTimer = setTimeout(() => {
+                    this._playAtIndexTimer = null;
+                    if (this._suspendPlayForNav) return;
+                    this.initVideoContexts();
+                    this.waitForVideoContext(idx).then(() => {
+                        if (this._suspendPlayForNav) return;
+                        this.pauseAllExcept(idx);
+                        this.currentVideoPaused = false;
+                        this.playVideo(idx);
+                        this.tryUnmuteVideo(idx);
+                    });
+                }, 200);
+            });
+        },
+
+        pauseAllExcept(activeIndex) {
+            const active = Math.floor(Number(activeIndex));
+            const n = this.videoList && this.videoList.length ? this.videoList.length : 0;
+            for (let i = 0; i < n; i++) {
+                if (i !== active) {
+                    this.pauseVideo(i);
+                }
+            }
+        },
+
+        toggleCurrentVideoPlayPause() {
+            const idx = this.currentIndex;
+            if (!this.videoList.length) return;
+            if (this.currentVideoPaused) {
+                this.playVideo(idx);
+                this.tryUnmuteVideo(idx);
+            } else {
+                this.pauseVideo(idx);
+                this.currentVideoPaused = true;
+            }
+        },
+
+        switchToIndex(targetIndex) {
+            const next = Math.floor(Number(targetIndex));
+            if (!Number.isFinite(next) || next < 0) return;
+            const max = (this.videoList || []).length - 1;
+            if (max < 0) return;
+            const clamped = Math.min(Math.max(next, 0), max);
+            this.commitIndexSwitch(this.currentIndex, clamped);
+        },
+
+        waitForVideoContext(index, timeout = 2000) {
+            return new Promise((resolve) => {
+                if (this.ensureVideoContext(index)) {
+                    resolve();
+                    return;
+                }
+                const startTime = Date.now();
+                const check = () => {
+                    if (this.ensureVideoContext(index)) {
+                        resolve();
+                    } else if (Date.now() - startTime < timeout) {
+                        setTimeout(check, 50);
+                    } else {
+                        console.warn(`等待视频上下文超时: index=${index}`);
+                        resolve();
+                    }
+                };
+                check();
+            });
+        },
+
+        onSwiperChange(e) {
+            if (this._pvSkipSwiperChangeOnce) {
+                this._pvSkipSwiperChangeOnce = false;
+                return;
+            }
+            const raw =
+                e && e.detail && e.detail.current != null ? e.detail.current : null;
+            if (raw == null) return;
+            const curIndex = Math.floor(Number(raw));
+            if (!Number.isFinite(curIndex)) return;
+            const prevIndex = this.currentIndex;
+            if (curIndex === prevIndex) return;
+            this.commitIndexSwitch(prevIndex, curIndex);
+        },
+        async commitIndexSwitch(prevIndex, targetIndex) {
+            const max = (this.videoList || []).length - 1;
+            if (max < 0) return;
+            const prev = Math.min(Math.max(Math.floor(Number(prevIndex)) || 0, 0), max);
+            const curIndex = Math.min(Math.max(Math.floor(Number(targetIndex)) || 0, 0), max);
+            if (curIndex === prev) return;
+
+            if (this._swiperAnimTimer) {
+                clearTimeout(this._swiperAnimTimer);
+                this._swiperAnimTimer = null;
+            }
+
+            if (prev >= 0) {
+                this.pauseVideo(prev);
+                const prevCtx = this.videoContexts[prev] || this.ensureVideoContext(prev);
+                if (prevCtx) {
+                    try {
+                        prevCtx.seek(0);
+                    } catch (err) {}
+                }
+            }
+
+            this._pvSkipSwiperChangeOnce = true;
+            this.currentIndex = curIndex;
+            this.currentVideoPaused = false;
+
+            var vm = this;
+            var animMs = Number(vm.swiperDurationMs) || 300;
+            vm._swiperAnimTimer = setTimeout(function () {
+                vm._swiperAnimTimer = null;
+                vm.finishSwiperSwitch(curIndex);
+            }, animMs + 20);
+        },
+        async finishSwiperSwitch(curIndex) {
+            const next = Math.floor(Number(curIndex));
+            if (!Number.isFinite(next) || next < 0) return;
+
+            await this.$nextTick();
+            this.initVideoContexts();
+            await this.waitForVideoContext(next);
+            this.pauseAllExcept(next);
+            this.playVideo(next);
+            this.tryUnmuteVideo(next);
+            this.cleanupInvisibleContexts();
+            this.onEpisodeChange(next);
+            this.swiperPeekPreheat = false;
+            this.peekVideoContexts = {};
+        },
+        onEpisodeChange(index) {
+            const ep = this.episodeList && this.episodeList[index];
+            if (!ep) return;
+            const drama = this.getDramaAt(index);
+            const nextDramaId = ep.drama_id || drama.id || drama.drama_id || "";
+            const idStr = nextDramaId ? String(nextDramaId) : "";
+            const changed = idStr && idStr !== String(this.dramaId);
+            if (idStr) this.dramaId = idStr;
+            this.applyDramaInfo(drama);
+            if (changed) {
+                this.fetchDramaDetail();
+                this.fetchCommentTotal();
+                this.fetchCommentList();
+            } else if (this.showCommentPanel) {
+                this.fetchCommentTotal();
+            }
+        },
+
+        playVideo(index) {
+            if (this._suspendPlayForNav) return;
+            const ctx = this.videoContexts[index];
+            if (ctx) {
+                ctx.play();
+            }
+            if (index === this.currentIndex) {
+                this.currentVideoPaused = false;
+            }
+        },
+
+        pauseVideo(index) {
+            const ctx = this.videoContexts[index];
+            if (ctx) {
+                ctx.pause();
+            }
+        },
+        /**
+         * 离开本页、跳转其它页、切后台时调用。
+         * navigateTo 不会走 beforeDestroy；nvue 原生 video 需对每条流 stop + pause。
+         */
+        pauseAllVideos() {
+            this.clearPendingPlaySchedule();
+            this.swiperPeekPreheat = false;
+            this.pausePeekVideos();
+            const n =
+                this.videoList && this.videoList.length
+                    ? this.videoList.length
+                    : 0;
+            for (let i = 0; i < n; i++) {
+                let ctx = this.videoContexts[i];
+                if (!ctx) {
+                    try {
+                        ctx = uni.createVideoContext("video_" + i, this);
+                    } catch (e) {}
+                }
+                if (!ctx) continue;
+                try {
+                    if (typeof ctx.stop === "function") {
+                        ctx.stop();
+                    }
+                } catch (e1) {}
+                try {
+                    if (typeof ctx.pause === "function") {
+                        ctx.pause();
+                    }
+                } catch (e2) {}
+            }
+            this.currentVideoPaused = true;
+        },
+
+        tryUnmuteVideo(index) {
+            const ctx = this.videoContexts[index];
+            if (ctx) {
+                try {
+                    ctx.mute(false);
+                } catch (e) {}
+            }
+        },
+
+        cleanupInvisibleContexts() {
+            Object.keys(this.videoContexts).forEach((key) => {
+                const index = parseInt(key, 10);
+                if (!this.visibleIndexes.has(index)) {
+                    const ctx = this.videoContexts[index];
+                    if (ctx) {
+                        try {
+                            ctx.pause();
+                        } catch (e) {}
+                    }
+                }
+            });
+        },
+
+        onVideoError(index, e) {
+            console.error('视频错误', index, e);
+        },
+
+        goBack() {
+            uni.navigateBack();
+        },
+        toggleAutoChange() {
+            this.isAutoChange = !this.isAutoChange;
+            uni.showToast({
+                title: this.isAutoChange ? '已开启自动切集' : '已关闭自动切集',
+                icon: 'none'
+            });
+        },
+        toggleLike() {
+            if (!this.dramaId) {
+                uni.showToast({
+                    title: "短剧信息异常",
+                    icon: "none"
+                });
+                return;
+            }
+            if (!ensureMtLogin(this, "点赞")) {
+                return;
+            }
+            request({
+                url: "/micro_theatre_two/web/index.php?m=index_data&a=toggle_drama_like",
+                method: "POST",
+                needToken: true,
+                data: {
+                    drama_id: String(this.dramaId).trim(),
+                    type: 1,
+                },
+            })
+                .then((res) => {
+                    if (res && res.errcode === 0) {
+                        this.isLike = !this.isLike;
+                        const cur = Number(this.dramaInfo.like_count != null ? this.dramaInfo.like_count : this.dramaInfo.favorite_count) || 0;
+                        const next = this.isLike ? cur + 1 : Math.max(0, cur - 1);
+                        this.$set(this.dramaInfo, "like_count", next);
+                    } else {
+                        const hint = formatMtNeedLoginMsg(
+                            res && res.errmsg,
+                            "点赞",
+                        );
+                        uni.showToast({
+                            title: hint,
+                            icon: "none",
+                            duration: 2500,
+                        });
+                    }
+                })
+                .catch(() => {
+                    uni.showToast({
+                        title: "网络异常，请稍后重试",
+                        icon: "none",
+                    });
+                });
+        },
+        toggleCommentPanel() {
+            const next = !this.showCommentPanel;
+            this.showCommentPanel = next;
+            if (next) {
+                this.fetchCommentTotal();
+                this.fetchCommentList();
+            }
+        },
+        submitComment() {
+            // 发布前改为 false；为 true 时 HBuilderX 控制台可看 [play_video][submitComment] 日志
+            const DBG = true;
+            const log = (...args) => {
+                if (!DBG) return;
+                try {
+                    console.log("[play_video][submitComment]", ...args);
+                } catch (e) {}
+            };
+            const content = String(this.commentDraft || "").replace(/[\u3000\s]+/g, " ").trim();
+            if (!content) {
+                uni.showToast({
+                    title: "请输入评论内容",
+                    icon: "none"
+                });
+                return;
+            }
+            if (!this.dramaId) {
+                uni.showToast({
+                    title: "短剧信息异常",
+                    icon: "none"
+                });
+                return;
+            }
+            log("tap_send", {
+                dramaId: this.dramaId,
+                contentLen: content.length,
+                preview: content.slice(0, 40),
+            });
+            uni.showLoading({
+                title: "发送中",
+                mask: true,
+            });
+            const loadingTimer = setTimeout(() => {
+                log("warn_loading_over_18s", "仍显示发送中，可能请求未返回或 hideLoading 未执行");
+            }, 18000);
+            const endLoading = () => {
+                clearTimeout(loadingTimer);
+                try {
+                    uni.hideLoading();
+                } catch (e) {
+                    log("hideLoading_err", e);
+                }
+            };
+            request({
+                url: "/micro_theatre_two/web/index.php?m=index_data&a=add_comment",
+                method: "POST",
+                needToken: true,
+                data: {
+                    drama_id: String(this.dramaId).trim(),
+                    content,
+                },
+            })
+                .then((res) => {
+                    log("request_then_raw", res === 0 ? 0 : typeof res, res === 0 ? "zero" : JSON.stringify(res).slice(0, 500));
+                    endLoading();
+                    if (res && res.errcode === 0) {
+                        this.commentDraft = "";
+                        this.fetchCommentTotal();
+                        this.fetchCommentList();
+                        uni.showToast({
+                            title: res.errmsg || "评论成功",
+                            icon: "success",
+                        });
+                        return;
+                    }
+                    let msg =
+                        res && typeof res === "object" && res.errmsg
+                            ? String(res.errmsg)
+                            : res === 0
+                              ? "接口无有效数据(0)，见控制台 request_then_raw"
+                              : "评论失败(errcode=" + (res && res.errcode != null ? res.errcode : "?") + ")";
+                    if (msg.indexOf("参数不完整") >= 0) {
+                        msg = "请先登录后再评论";
+                    }
+                    log("biz_fail_show_toast", msg);
+                    uni.showToast({
+                        title: msg.length > 20 ? msg.slice(0, 20) + "…" : msg,
+                        icon: "none",
+                        duration: 2800,
+                    });
+                })
+                .catch((ret) => {
+                    log("request_catch", ret, ret && ret.errmsg);
+                    endLoading();
+                    const msg = (ret && ret.errmsg) || "发送失败，请重试";
+                    uni.showToast({
+                        title: msg,
+                        icon: "none"
+                    });
+                });
+        },
+        goInfoAt(index) {
+            const idx = Math.floor(Number(index));
+            if (!Number.isFinite(idx) || idx < 0) return;
+            const ep = this.episodeList && this.episodeList[idx];
+            const drama = this.getDramaAt(idx);
+            const dramaId = (ep && (ep.drama_id || drama.id || drama.drama_id)) || "";
+            if (!dramaId) {
+                uni.showToast({
+                    title: "短剧信息异常",
+                    icon: "none",
+                });
+                return;
+            }
+            this.suspendPlaybackForNav();
+            const epNo = this.pickEpisodeOrderFromIndex(idx) || 1;
+            const url = `/micro_theatre_two/pages/play_video_simple/play_video_simple?id=${encodeURIComponent(dramaId)}&num=${encodeURIComponent(epNo)}&open_sort=1`;
+            uni.navigateTo({
+                url,
+                fail: (err) => {
+                    console.warn("[play_video.nvue][goInfo] navigateTo fail", err);
+                    this._suspendPlayForNav = false;
+                    this.currentVideoPaused = false;
+                    this.$nextTick(() => {
+                        this.waitForVideoContext(this.currentIndex).then(() => {
+                            this.playVideo(this.currentIndex);
+                            this.tryUnmuteVideo(this.currentIndex);
+                        });
+                    });
+                    uni.showToast({
+                        title: (err && err.errMsg) || "页面跳转失败",
+                        icon: "none",
+                        duration: 2000,
+                    });
+                },
+            });
+        },
+        goSearch() {
+            this.suspendPlaybackForNav();
+            uni.navigateTo({
+                url: "/micro_theatre_two/pages/history_search/history_search",
+                success: () => {
+                    this.suspendPlaybackForNav();
+                },
+                fail: (err) => {
+                    console.warn("[play_video.nvue][goSearch] navigateTo fail", err);
+                    this._suspendPlayForNav = false;
+                    this.currentVideoPaused = false;
+                    this.$nextTick(() => {
+                        this.waitForVideoContext(this.currentIndex).then(() => {
+                            this.playVideo(this.currentIndex);
+                            this.tryUnmuteVideo(this.currentIndex);
+                        });
+                    });
+                    uni.showToast({
+                        title: (err && err.errMsg) || "页面跳转失败",
+                        icon: "none",
+                        duration: 2000,
+                    });
+                },
+            });
+        },
+        buildAppNavUrl(miniLink) {
+            let url = String(miniLink || "").trim();
+            if (!url) return "";
+            if (url.startsWith("http")) return "";
+            if (url.startsWith("/public/pages/")) {
+                url = url.replace("/public/pages/", "/pages/");
+            } else if (url.charAt(0) !== "/") {
+                url = "/" + url;
+            }
+            if (url.indexOf("/micro_theatre_two/") === 0) return url;
+            const pathOnly = url.split("?")[0];
+            let inSub = MT_SUB_PAGES.indexOf(pathOnly) !== -1;
+            if (!inSub) {
+                const dirs = [
+                    "/pages/play_video/",
+                    "/pages/play_video_simple/",
+                    "/pages/playlet_info/",
+                    "/pages/vip/",
+                    "/pages/app_pay/",
+                ];
+                for (let i = 0; i < dirs.length && !inSub; i++) {
+                    if (pathOnly.indexOf(dirs[i]) === 0) inSub = true;
+                }
+            }
+            return inSub ? "/micro_theatre_two" + url : url;
+        },
+        openLinkTab(item) {
+            if (!item || !item.id) return;
+            const h5Target = String(item.h5_link || "").trim();
+            const miniTarget = String(item.mini_link || "").trim();
+            const isRecommend =
+                h5Target === this.recommendH5Link ||
+                miniTarget === this.recommendMiniLink;
+            const baseHost = String(this.http_host || "").replace(/\/+$/, "");
+            const h5Full =
+                h5Target.indexOf("http") === 0
+                    ? h5Target
+                    : h5Target
+                      ? baseHost +
+                        (h5Target.charAt(0) === "/" ? h5Target : "/" + h5Target)
+                      : "";
+            const appNavUrl = this.buildAppNavUrl(miniTarget);
+            console.log("[play_video.nvue][openLinkTab]", {
+                id: item.id,
+                title: item.title,
+                isRecommend: isRecommend,
+                h5_link: h5Target,
+                h5_full: h5Full,
+                mini_link: miniTarget,
+                app_nav_url: appNavUrl,
+            });
+            this.activeLinkId = item.id;
+            if (isRecommend) {
+                return;
+            }
+            // #ifdef H5
+            if (!h5Target) {
+                uni.showToast({
+                    title: "未配置 H5 链接",
+                    icon: "none",
+                });
+                return;
+            }
+            console.log("[play_video.nvue][openLinkTab] H5跳转", h5Full || h5Target);
+            this.pauseAllVideos();
+            window.location.href = h5Full || h5Target;
+            return;
+            // #endif
+
+            // #ifndef H5
+            if (!miniTarget) {
+                uni.showToast({
+                    title: "未配置 App 链接",
+                    icon: "none",
+                });
+                return;
+            }
+            if (!appNavUrl) {
+                uni.showToast({
+                    title: "未配置有效跳转链接",
+                    icon: "none",
+                });
+                return;
+            }
+            console.log("[play_video.nvue][openLinkTab] App跳转", appNavUrl);
+            this.suspendPlaybackForNav();
+            uni.redirectTo({
+                url: appNavUrl,
+                fail: (err) => {
+                    console.warn(
+                        "[play_video.nvue][openLinkTab] redirectTo fail",
+                        err,
+                        appNavUrl,
+                    );
+                    this._suspendPlayForNav = false;
+                    uni.navigateTo({
+                        url: appNavUrl,
+                        fail: (err2) => {
+                            console.warn(
+                                "[play_video.nvue][openLinkTab] navigateTo fail",
+                                err2,
+                                appNavUrl,
+                            );
+                            uni.showToast({
+                                title: (err2 && err2.errMsg) || "页面跳转失败",
+                                icon: "none",
+                            });
+                        },
+                    });
+                },
+            });
+            // #endif
+        },
+        formatCount(n) {
+            const num = Number(n) || 0;
+            if (num >= 10000) {
+                return (Math.round((num / 10000) * 10) / 10).toFixed(1) + "万";
+            }
+            return String(num);
+        }
+    },
+    beforeDestroy() {
+        this.clearSwiperDragTimer();
+        this.clearPendingPlaySchedule();
+        if (this._swiperAnimTimer) {
+            clearTimeout(this._swiperAnimTimer);
+            this._swiperAnimTimer = null;
+        }
+        this.pauseAllVideos();
+        this.videoContexts = {};
+        this.videoRefs = {};
+        this.peekVideoContexts = {};
+    }
+};
+</script>
+
+<style>
+.page {
+    flex: 1;
+    position: relative;
+    background-color: #000000;
+}
+.slide-peek {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    background-color: #000000;
+}
+.slide-peek-body {
+    flex: 1;
+    position: relative;
+    width: 750rpx;
+}
+.slide-peek-poster {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+.slide-peek-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+.slide-peek-ui {
+    z-index: 3;
+}
+.swiper-drag-wrap {
+    flex: 1;
+    width: 750rpx;
+    z-index: 4;
+}
+.swiper {
+    flex: 1;
+    width: 750rpx;
+}
+.swiper-item {
+    flex: 1;
+    width: 750rpx;
+    background-color: #000000;
+    position: relative;
+}
+.uni-vdplayer {
+    flex: 1;
+    width: 750rpx;
+    position: relative;
+}
+.video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+.placeholder {
+    flex: 1;
+    background-color: #000000;
+}
+.slide-right-actions {
+    position: absolute;
+    right: 16rpx;
+    top: 0;
+    bottom: 0;
+    width: 112rpx;
+    z-index: 12;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-top: 140rpx;
+}
+.slide-bottom-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 120rpx;
+    z-index: 12;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding-bottom: 30rpx;
+}
+.slide-bottom-meta {
+    padding-left: 30rpx;
+    padding-right: 128rpx;
+    margin-bottom: 12rpx;
+}
+.pause-play-screen-center {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 11;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+.video-gesture-layer {
+    position: absolute;
+    left: 24rpx;
+    right: 128rpx;
+    top: 200rpx;
+    bottom: 380rpx;
+    z-index: 9;
+}
+.pause-play-overlay-img {
+    width: 120rpx;
+    height: 120rpx;
+}
+.top-category-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 40px;
+    height: 70rpx;
+    z-index: 10003;
+    padding-left: 16rpx;
+    padding-right: 16rpx;
+    flex-direction: row;
+    align-items: center;
+}
+.top-left-spacer {
+    width: 70rpx;
+    height: 70rpx;
+}
+.top-right {
+    width: 90rpx;
+    height: 90rpx;
+    justify-content: center;
+    align-items: center;
+}
+.top-tabs {
+    flex: 1;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+.top-tab-item {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-left: 20rpx;
+    margin-right: 20rpx;
+    padding-top: 12rpx;
+    padding-bottom: 12rpx;
+    padding-left: 16rpx;
+    padding-right: 16rpx;
+}
+.top-tab-text {
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 36rpx;
+}
+.top-tab-text-active {
+    color: #ffffff;
+    font-weight: bold;
+}
+.top-tab-underline {
+    width: 56rpx;
+    height: 6rpx;
+    margin-top: 8rpx;
+    border-radius: 3rpx;
+    background-color: rgba(255, 255, 255, 0);
+}
+.top-tab-underline-active {
+    background-color: #ffffff;
+}
+.search-icon {
+    color: #ffffff;
+    font-size: 60rpx;
+    font-weight: bold;
+}
+.page-init-loading {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 200rpx;
+    bottom: 0;
+    z-index: 10002;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.page-init-spinner {
+    width: 56rpx;
+    height: 56rpx;
+    margin-bottom: 16rpx;
+    color: rgba(255, 255, 255, 0.9);
+}
+.page-init-loading-text {
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 28rpx;
+}
+.back-btn {
+    position: absolute;
+    top: 44px;
+    left: 20px;
+    width: 60rpx;
+    height: 60rpx;
+    border-radius: 30rpx;
+    background-color: rgba(0, 0, 0, 0.4);
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+.back-icon {
+    color: #ffffff;
+    font-size: 54rpx;
+    font-weight: bold;
+}
+.auto-btn {
+    position: absolute;
+    top: 120rpx;
+    right: 20rpx;
+    width: 180rpx;
+    height: 52rpx;
+    padding-left: 10rpx;
+    padding-right: 14rpx;
+    border-radius: 26rpx;
+    background-color: rgba(0, 0, 0, 0.4);
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+.auto-icon {
+    width: 28rpx;
+    height: 28rpx;
+    margin-right: 8rpx;
+}
+.auto-text {
+    color: #ffffff;
+    font-size: 22rpx;
+}
+.right-actions {
+    position: absolute;
+    right: 16rpx;
+    top: 0;
+    bottom: 0;
+    width: 112rpx;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding-top: 140rpx;
+    z-index: 20;
+}
+.action-item {
+    width: 96rpx;
+    margin-bottom: 36rpx;
+    align-items: center;
+}
+.action-img {
+    width: 58rpx;
+    height: 58rpx;
+}
+.action-num {
+    margin-top: 10rpx;
+    color: #ffffff;
+    font-size: 26rpx;
+}
+.pause-play-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 8;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+}
+.bottom-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 46rpx;
+    z-index: 20;
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+}
+.movie-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8rpx;
+}
+.movie-cover {
+    width: 44rpx;
+    height: 60rpx;
+    border-radius: 8rpx;
+    margin-right: 12rpx;
+    flex-shrink: 0;
+}
+.movie-name {
+    flex: 1;
+    color: #ffffff;
+    font-size: 28rpx;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+.desc-row {
+    margin-top: 10rpx;
+    flex-direction: row;
+    align-items: center;
+}
+.desc-text {
+    flex: 1;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 22rpx;
+    line-height: 32rpx;
+    lines: 1;
+    text-overflow: ellipsis;
+}
+.movie-title-row {
+    margin-left: 30rpx;
+    margin-right: 30rpx;
+    height: 56rpx;
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+    border-radius: 16rpx;
+    background-color: rgba(0, 0, 0, 0.15);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+.movie-title {
+    flex: 1;
+    color: #ffffff;
+    font-size: 22rpx;
+    lines: 1;
+    text-overflow: ellipsis;
+    margin-right: 16rpx;
+}
+.movie-arrow {
+    color: #ffffff;
+    font-size: 28rpx;
+    flex-shrink: 0;
+}
+.episode-row {
+    margin-top: 14rpx;
+}
+.episode-text {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 22rpx;
+}
+.comment-overlay-stack {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 10002;
+}
+.comment-stack-mask {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.35);
+    z-index: 0;
+}
+.comment-stack-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 420rpx;
+    background-color: #f6f6f6;
+    border-top-left-radius: 24rpx;
+    border-top-right-radius: 24rpx;
+    z-index: 1;
+    overflow: hidden;
+    elevation: 16;
+}
+.comment-top-bar {
+    height: 64rpx;
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+    border-bottom-width: 1rpx;
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+    background-color: #ffffff;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+.comment-total-text {
+    color: #646464;
+    font-size: 24rpx;
+}
+.comment-collapse-hit {
+    width: 80rpx;
+    height: 64rpx;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+}
+.comment-collapse-arrow {
+    color: #666666;
+    font-size: 28rpx;
+}
+.comment-scroll {
+    height: 250rpx;
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+    background-color: #ffffff;
+}
+.comment-cell {
+    padding-top: 18rpx;
+    padding-bottom: 18rpx;
+}
+.comment-user-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 10rpx;
+}
+.comment-avatar {
+    width: 44rpx;
+    height: 44rpx;
+    border-radius: 22rpx;
+    background-color: #eaeaea;
+}
+.comment-username {
+    margin-left: 12rpx;
+    color: #777777;
+    font-size: 24rpx;
+}
+.comment-content {
+    color: #333333;
+    font-size: 30rpx;
+    line-height: 40rpx;
+}
+.comment-empty {
+    text-align: center;
+    color: #9a9a9a;
+    font-size: 24rpx;
+    padding-top: 60rpx;
+}
+.comment-input-wrap {
+    height: 106rpx;
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+    background-color: #f6f6f6;
+    flex-direction: row;
+    align-items: center;
+}
+.comment-input {
+    flex: 1;
+    height: 70rpx;
+    border-radius: 12rpx;
+    background-color: #e9e9e9;
+    padding-left: 18rpx;
+    padding-right: 18rpx;
+    color: #666666;
+    font-size: 24rpx;
+}
+.comment-send-hit {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding-left: 20rpx;
+    padding-right: 20rpx;
+    padding-top: 16rpx;
+    padding-bottom: 16rpx;
+    margin-left: 8rpx;
+}
+.comment-send-btn {
+    color: #2196f3;
+    font-size: 28rpx;
+    font-weight: 600;
+}
+.page-bottom-tabbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10001;
+    height: 110rpx;
+    background-color: #ffffff;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    border-top-width: 1rpx;
+    border-top-color: #eeeeee;
+    border-top-style: solid;
+}
+.page-bottom-tab-item {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.page-bottom-tab-icon {
+    width: 50rpx;
+    height: 50rpx;
+}
+.page-bottom-tab-text {
+    margin-top: 6rpx;
+    font-size: 22rpx;
+}
+</style>

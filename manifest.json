@@ -1,0 +1,215 @@
+{
+    "name" : "OEM",
+    "appid" : "__UNI__EDBB1A3",
+    "description" : "OEM",
+    "versionName" : "1.0.10",
+    "versionCode" : 1010,
+    "transformPx" : false,
+    /* 5+App特有相关 */
+    "app-plus" : {
+        "usingComponents" : true,
+        "nvueStyleCompiler" : "uni-app",
+        "compilerVersion" : 3,
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        "compatible" : {
+            "ignoreVersion" : true //true表示忽略版本检查提示框，HBuilderX1.9.0及以上版本支持  
+        },
+        "privacy" : {
+            "prompt" : "template",
+            "template" : {
+                "title" : "用户协议和隐私政策",
+                "message" : "请你务必审慎阅读、充分理解“服务协议”和“隐私政策”各条款，包括但不限于：为了更好的向你提供服务，我们需要收集你的设备标识、操作日志等信息用于分析、优化应用性能。<br/>　　你可阅读<a href='https://ypt.fm54.cn/wsy_pub/web/index.php?m=user&a=user_agreement&customer_id=9008'>《用户协议》</a>和<a href='https://ypt.fm54.cn/wsy_pub/web/index.php?m=user&a=privacy_policy&customer_id=9008'>《隐私政策》</a>了解详细信息。如果你同意，请点击下面按钮开始接受我们的服务。",
+                "buttonAccept" : "同意",
+                "buttonRefuse" : "不同意"
+            }
+        },
+        /* 模块配置 */
+        "modules" : {
+            "Share" : {},
+            "VideoPlayer" : {},
+            "Payment" : {}
+        },
+        /* 应用发布信息 */
+        "distribute" : {
+            /* android打包配置 */
+            "android" : {
+                "permissions" : [
+                    "<uses-feature android:name=\"android.hardware.camera\"/>",
+                    "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.CALL_PHONE\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.FLASHLIGHT\"/>",
+                    "<uses-permission android:name=\"android.permission.GET_ACCOUNTS\"/>",
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>",
+                    "<uses-permission android:name=\"android.permission.MOUNT_UNMOUNT_FILESYSTEMS\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_LOGS\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_PHONE_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+                    "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>"
+                ],
+                "permissionExternalStorage" : {
+                    "request" : "none",
+                    "prompt" : "应用保存运行状态等信息，需要获取读写手机存储（系统提示为访问设备上的照片、媒体内容和文件）权限，请允许。"
+                },
+                "permissionPhoneState" : {
+                    "request" : "none",
+                    "prompt" : "为保证您正常、安全地使用，需要获取设备识别码（部分手机提示为获取手机号码）使用权限，请允许。"
+                },
+                "abiFilters" : [ "armeabi-v7a", "arm64-v8a" ],
+                "schemes" : "stc25c331ab21cb5dd"
+            },
+            /* ios打包配置 */
+            "ios" : {
+                "privacyDescription" : {
+                    "NSPhotoLibraryUsageDescription" : "获取图片用于头像上传",
+                    "NSPhotoLibraryAddUsageDescription" : "用于相关商品图片保存",
+                    "NSCameraUsageDescription" : "获取图片用于头像上传",
+                    "NSLocationWhenInUseUsageDescription" : "为了精准获取您附近的门店，我们希望获取您的地址位置信息权限",
+                    "NSLocationAlwaysAndWhenInUseUsageDescription" : "为了精准获取您附近的门店，我们希望获取您的地址位置信息权限",
+                    "NSMicrophoneUsageDescription" : "用于相关语音通信"
+                },
+                "idfa" : false,
+                "capabilities" : {
+                    "entitlements" : {
+                        "com.apple.developer.associated-domains" : [
+                            "applinks:ypt.fm54.cn",
+                            "applinks:static-0b1ebc51-f8e7-491c-b3fd-254e56721872.bspapp.com",
+                            "applinks:c25c331ab21cb5dd.stul.sharetrace.com"
+                        ]
+                    }
+                },
+                "urltypes" : "stc25c331ab21cb5dd",
+                "dSYMs" : false
+            },
+            /* SDK配置 */
+            "sdkConfigs" : {
+                "share" : {
+                    "weixin" : {
+                        "appid" : "wxfc89bac53c245e43",
+                        "UniversalLinks" : "https://ypt.fm54.cn/resources/uniapp/"
+                    }
+                },
+                "ad" : {},
+                "payment" : {
+                    "weixin" : {
+                        "__platform__" : [ "ios", "android" ],
+                        "appid" : "wxfc89bac53c245e43",
+                        "UniversalLinks" : "https://ypt.fm54.cn/resources/uniapp/"
+                    },
+                    "alipay" : {
+                        "__platform__" : [ "ios", "android" ]
+                    }
+                },
+                "oauth" : {
+                    "weixin" : {
+                        "appid" : "wxfc89bac53c245e43",
+                        "appsecret" : "",
+                        "UniversalLinks" : "https://ypt.fm54.cn/resources/uniapp/"
+                    }
+                },
+                "maps" : {},
+                "push" : {}
+            },
+            "icons" : {
+                "android" : {
+                    "hdpi" : "unpackage/res/icons/72x72.png",
+                    "xhdpi" : "unpackage/res/icons/96x96.png",
+                    "xxhdpi" : "unpackage/res/icons/144x144.png",
+                    "xxxhdpi" : "unpackage/res/icons/192x192.png"
+                },
+                "ios" : {
+                    "appstore" : "unpackage/res/icons/1024x1024.png",
+                    "ipad" : {
+                        "app" : "unpackage/res/icons/76x76.png",
+                        "app@2x" : "unpackage/res/icons/152x152.png",
+                        "notification" : "unpackage/res/icons/20x20.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png",
+                        "proapp@2x" : "unpackage/res/icons/167x167.png",
+                        "settings" : "unpackage/res/icons/29x29.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "spotlight" : "unpackage/res/icons/40x40.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png"
+                    },
+                    "iphone" : {
+                        "app@2x" : "unpackage/res/icons/120x120.png",
+                        "app@3x" : "unpackage/res/icons/180x180.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png",
+                        "notification@3x" : "unpackage/res/icons/60x60.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "settings@3x" : "unpackage/res/icons/87x87.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png",
+                        "spotlight@3x" : "unpackage/res/icons/120x120.png"
+                    }
+                }
+            },
+            "splashscreen" : {
+                "useOriginalMsgbox" : true,
+                "androidStyle" : "default",
+                "iosStyle" : "storyboard"
+            }
+        },
+        "nativePlugins" : {
+            "TUICallingUniPlugin-TUICallingModule" : {
+                "__plugin_info__" : {
+                    "name" : "【官方】腾讯云原生音视频插件 TUICalling",
+                    "description" : "TUICalling 是 腾讯云官方推出 的基于腾讯云实时音视频 TRTC 和即时通信 IM 服务组合而成的插件，支持双人和多人音视频通话。插件提供了全套定制UI，开发者仅需三个 API 就可实现",
+                    "platforms" : "Android,iOS",
+                    "url" : "https://ext.dcloud.net.cn/plugin?id=7097",
+                    "android_package_name" : "uni.UNI4E636BB",
+                    "ios_bundle_id" : "test",
+                    "isCloud" : true,
+                    "bought" : 1,
+                    "pid" : "7097",
+                    "parameters" : {}
+                }
+            }
+        }
+    },
+    /* 快应用特有相关 */
+    "quickapp" : {},
+    /* 小程序特有相关 */
+    "mp-weixin" : {
+        "appid" : "",
+        "setting" : {
+            "urlCheck" : false
+        },
+        "usingComponents" : true
+    },
+    "mp-alipay" : {
+        "usingComponents" : true
+    },
+    "mp-baidu" : {
+        "usingComponents" : true
+    },
+    "mp-toutiao" : {
+        "usingComponents" : true
+    },
+    "uniStatistics" : {
+        "enable" : false
+    },
+    "vueVersion" : "2",
+    "_spaceID" : "0b1ebc51-f8e7-491c-b3fd-254e56721872",
+    "h5" : {
+        "sdkConfigs" : {
+            "maps" : {
+                "qqmap" : {
+                    "key" : "QO3BZ-D7KKU-QSQVY-2YDY5-6VOEK-EUBD4"
+                }
+            }
+        }
+    }
+}

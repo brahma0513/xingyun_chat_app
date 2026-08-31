@@ -1,0 +1,6 @@
+/unpackage
+/.hbuilderx/
+/.idea/
+/package-lock.json
+.DS_Store
+/utils/config_deploy.js

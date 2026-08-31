@@ -1,0 +1,104 @@
+view,
+page,
+text,
+button,
+image,
+textarea,
+scroll-view,
+input {
+	box-sizing: border-box;
+}
+image {
+	display: block;
+}
+button {
+	margin: 0;
+	padding: 0;
+	background-color: #ffff;
+}
+button::after {
+	border: none;
+}
+/*初始化背景颜色*/
+page {
+	background-color: #f2f6fc;
+}
+/* #ifndef APP-NVUE */
+// 由于uView是基于nvue环境进行开发的，此环境中普通元素默认为flex-direction: column;
+// 所以在非nvue中，需要对元素进行重置为flex-direction: column; 否则可能会表现异常
+view,
+scroll-view,
+swiper-item {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	flex-grow: 0;
+	flex-basis: auto;
+	align-items: stretch;
+	align-content: flex-start;
+}
+/* #endif */
+/*省略*/
+.line-1 {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.line-2 {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+.line-3 {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+/*盒子*/
+.box {
+	width: 94%;
+	margin: 12px auto;
+	border-radius: 9px;
+}
+
+.u-flex-column {
+	flex-direction: column !important;
+}
+.loadPage {
+	position: fixed;
+	width: 100%;
+	height: 100%;
+	z-index: 99999;
+}
+/deep/.mescroll-empty .empty-icon {
+	margin: 0 auto !important;
+}
+.safeBottom {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safeTop {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+}
+
+.mescroll-upwarp{
+	width: 100%;
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+}
+.mescroll-upwarp view{
+	display: flex;
+	flex-direction: row;
+}
+.mescroll-downwarp .downwarp-content{
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+}
