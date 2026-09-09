@@ -1,0 +1,800 @@
+<template>
+  <view class="msg-list" ref="messageListContainerViewRef" :style="{ 'padding-top': navbarHeightPx + 'px' }">
+    <list
+      fixFreezing="true"
+      ref="messageListRef"
+      class="msg-list__scroll"
+      :class="{ 'msg-list__scroll--hidden': isFirstLoad }"
+      :show-scrollbar="false"
+      :loadmoreoffset="200"
+      @scroll="handleScroll"
+      @loadmore="onLoadMore"
+      @tap="handleMsgListTouchStart"
+    >
+      <refresh 
+        class="msg-list__refresh"
+        @refresh="onRefresh"
+        @pullingdown="onPullingDown"
+        :display="refreshing ? 'show' : 'hide'"
+      >
+        <text class="msg-list__refresh-text">{{ refreshText }}</text>
+        <loading-indicator v-if="refreshing" class="msg-list__refresh-indicator"></loading-indicator>
+      </refresh>
+      
+      <cell
+        v-for="(item, index) in messageItems"
+        :key="item.key"
+        :ref="el => setCellRef(el, index)"
+      >
+        <view>
+          <MessageTimeDivider
+            v-if="item.type === 'divider'"
+            :timestamp="item.timestamp"
+          />
+
+          <Message
+            v-else-if="item.type === 'message'"
+            :message="item.message"
+            :conversationID="conversationID"
+            :showAvatar="item.showAvatar"
+            :showNickname="item.showNickname"
+            :highlight="item.message?.msgID === currentHighlightID"
+            :customCenterChecker="customCenterChecker"
+            :customMessageRender="customMessageRender"
+            :inputPanelHeight="inputPanelHeight"
+            @onMessageListTap="handleMessageListTap"
+            @onMessageTap="handleMessageTap"
+          />
+        </view>
+      </cell>
+    <cell
+      ref="listBottomAnchorRef"
+      style="height: 1rpx;"
+      @appear="onBottomAnchorAppear"
+      @disappear="onBottomAnchorDisappear"
+    ></cell>
+    </list>
+    
+    <view 
+      v-if="showScrollToBottom" 
+      class="msg-list__scroll-btn"
+      @tap="handleScrollToBottomTap"
+    >
+      <image
+        src="../../static/icon/down.png"
+        class="msg-list__scroll-btn-icon"
+        mode="aspectFill"
+      />
+      <text class="msg-list__scroll-btn-text">新消息</text>
+    </view>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeMount, onBeforeUnmount, nextTick, getCurrentInstance } from 'vue'
+import Message from './Message/Message.nvue'
+import MessageTimeDivider from './MessageTimeDivider/MessageTimeDivider.nvue'
+import { useMessageListState } from '../../state/MessageListState'
+import { useConversationListState } from '../../state/ConversationListState'
+import { useListTransform } from './useListTransform'
+import { MessageStatus, MessageType, MessageListType, MessageLoadDirection } from '../../types/message'
+import { rpxToPx } from '../../utils/unitUtils'
+import type { MessageInfo } from '../../types/message'
+import type { CustomCenterChecker } from '../../utils/callMessageUtils'
+
+const instance = getCurrentInstance();
+
+interface Props {
+  conversationID: string
+  messageListType?: MessageListType
+  alignment?: string
+  messageAggregationTime?: number
+  enableReadReceipt?: boolean
+  messageActionList?: string[]
+  filter?: ((message: MessageInfo) => boolean) | null
+  locateMessage?: MessageInfo | null
+  // 输入框工具栏高度（px）
+  inputToolbarHeight?: number
+  // 键盘/Emoji面板高度（px）
+  inputPanelHeight?: number
+  // 自定义居中消息判断方法
+  customCenterChecker?: CustomCenterChecker | null
+  // 自定义消息渲染：(message, conversationID) => Component | null
+  // 返回组件 → 接管 CUSTOM 消息渲染；返回 null/undefined → 走内置 CustomMessage 默认渲染
+  customMessageRender?: any
+}
+
+interface MessageListExpose {
+  scrollToBottom: (animated?: boolean) => void;
+  scrollToMessage: (message: MessageInfo, animated?: boolean) => void;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  messageListType: MessageListType.HISTORY,
+  alignment: 'two-sided',
+  messageAggregationTime: 300, // 5分钟
+  enableReadReceipt: false,
+  messageActionList: () => [],
+  filter: null,
+  locateMessage: null,
+  inputToolbarHeight: 0,
+  inputPanelHeight: 0,
+  customCenterChecker: null,
+  customMessageRender: null
+})
+
+const emit = defineEmits<{
+  onMessageListTap: []
+  onMessageTap: [message: MessageInfo]
+}>()
+
+const navbarHeightPx = ref(0);
+const messageListRef = ref(null)
+const listBottomAnchorRef = ref(null)
+const showScrollToBottom = ref(false)
+const refreshing = ref(false)
+const refreshText = ref('下拉加载历史消息')
+const lastScrollTop = ref(0)
+const cellRefs: any[] = []
+const isFirstLoad = ref(true)
+const currentHighlightID = ref('')
+const pendingScrollMessage = ref<MessageInfo | null>(null)
+const readyCellCount = ref(0)
+let firstScreenStarted = false
+let firstScreenUserScrolled = false
+let stopReadyWatch: (() => void) | null = null
+
+const revealList = () => {
+  isFirstLoad.value = false
+}
+
+const timers = new Set<number>()
+
+const addTimer = (timer: number): number => {
+  timers.add(timer)
+  return timer
+}
+
+const clearTimer = (timer: number) => {
+  clearTimeout(timer)
+  timers.delete(timer)
+}
+
+const clearAllTimers = () => {
+  timers.forEach(timer => clearTimeout(timer))
+  timers.clear()
+}
+
+const setCellRef = (el: any, index: number) => {
+  if (el && cellRefs[index] !== el) {
+    const isNew = !cellRefs[index]
+    cellRefs[index] = el
+    if (isNew) readyCellCount.value++
+  }
+}
+
+const { messageList, loadMessages, loadOlderMessages, loadNewerMessages, hasOlderMessages, hasNewerMessages, destroyStore } = useMessageListState({
+  conversationID: props.conversationID,
+  initialLoadOption: (props.locateMessage && props.locateMessage.msgID)
+    ? { cursor: props.locateMessage, direction: MessageLoadDirection.BOTH, pageCount: 20 }
+    : undefined,
+})
+
+const { clearConversationUnreadCount } = useConversationListState();
+
+const loadMoreOlderMessage = () => {
+  return loadOlderMessages()
+}
+
+const loadMoreNewerMessage = () => {
+  return loadNewerMessages()
+}
+
+const isMessageInList = (messageID: string): boolean => {
+  if (!messageID || !messageList.value || messageList.value.length === 0) {
+    return false
+  }
+  return messageList.value.some(msg => msg.msgID === messageID)
+}
+
+const locateToMessage = async (message: MessageInfo) => {
+  if (!message || !message.msgID) return
+
+  try {
+    await loadMessages({
+      cursor: message,
+      direction: MessageLoadDirection.BOTH,
+      pageCount: 20
+    })
+  } catch (error) {
+    console.error('[MessageList] locateToMessage failed:', error)
+  }
+}
+
+interface MessageItem {
+  key: string
+  type: 'divider' | 'message'
+  timestamp?: number
+  message?: MessageInfo
+  showAvatar?: boolean
+  showNickname?: boolean
+}
+
+const messageItems = computed<MessageItem[]>(() => {
+  if (!messageList.value || messageList.value.length === 0) {
+    return []
+  }
+  
+  // 过滤消息
+  const filteredMessages = props.filter 
+    ? messageList.value.filter(props.filter)
+    : messageList.value.filter(message => message.status !== MessageStatus.DELETED)
+    
+  const items: MessageItem[] = []
+  const aggregationTime = props.messageAggregationTime * 1000
+  
+  filteredMessages.forEach((message, index) => {
+    const prevMessage = index > 0 ? filteredMessages[index - 1] : null
+    
+    const isCenterMessage = message.status === MessageStatus.REVOKED || 
+      message.messageType === MessageType.TIPS
+    
+    const showTimeDivider = index === 0 || 
+      (prevMessage && message.timestamp && prevMessage.timestamp &&
+       (message.timestamp - prevMessage.timestamp) > aggregationTime)
+    
+    if (showTimeDivider) {
+      items.push({
+        key: `divider-${message.msgID}`,
+        type: 'divider',
+        timestamp: message.timestamp
+      })
+    }
+    
+    if (isCenterMessage) {
+      items.push({
+        key: `message-${message.msgID}`,
+        type: 'message',
+        message,
+        showAvatar: false,
+        showNickname: false
+      })
+      return
+    }
+    
+    items.push({
+      key: `message-${message.msgID}`,
+      type: 'message',
+      message,
+      showAvatar: true,
+      showNickname: props.conversationID.startsWith('group_') && !message.isSentBySelf
+    })
+  })
+  
+  return items
+})
+
+const onPullingDown = (e: any) => {
+  if (refreshing.value) return
+  
+  const { pullingDistance, viewHeight } = e
+  if (pullingDistance < viewHeight) {
+    refreshText.value = '下拉加载历史消息'
+    emit('onMessageListTap')
+  } else {
+    refreshText.value = '释放加载历史消息'
+  }
+}
+
+const onRefresh = async (e: any) => {
+  if (refreshing.value) return;
+
+  refreshing.value = true;
+  
+  if (!hasOlderMessages.value) {
+    refreshText.value = '没有更多历史消息';
+    const timer = addTimer(setTimeout(() => {
+      refreshing.value = false;
+      clearTimer(timer);
+    }, 500));
+    return;
+  }
+
+  refreshText.value = '加载中...'
+  
+  const firstMessage = messageList.value && messageList.value.length > 0 
+    ? messageList.value[0] 
+    : null
+  
+  if (firstMessage) {
+    pendingScrollMessage.value = firstMessage
+  }
+  
+  try {
+    await loadMoreOlderMessage()
+    refreshText.value = '加载完成'
+  } catch (error) {
+    refreshText.value = '加载失败'
+    pendingScrollMessage.value = null
+  } finally {
+    const timer = addTimer(setTimeout(() => {
+      refreshing.value = false;
+      clearTimer(timer);
+    }, 500));
+  }
+}
+
+const onLoadMore = async () => {
+  if (!hasNewerMessages.value) return
+  
+  try {
+    await loadMoreNewerMessage()
+  } catch (error) {
+    console.error('[MessageList] loadMoreNewerMessage failed:', error)
+  }
+}
+
+/**
+ * @param animated 是否带动画。
+ *
+ * ★ 必须做布尔归一化：
+ *   模板 @tap 直接绑函数时，nvue 会把 tap 事件对象作为第一个实参传进来
+ *   （`@tap="scrollToBottom"` → animated = UITouchEvent 对象），
+ *   于是 `animated: <对象>` 进到 dom.scrollToElement 的 native 层，
+ *   iOS 侧按 BOOL 解析非布尔对象 → **App 崩溃**。
+ *   defineExpose 出去的外部调用同样不可控，所以在函数入口统一收口。
+ */
+const scrollToBottom = (animated: any = true) => {
+  if (messageItems.value.length === 0) return
+
+  const useAnimated = animated === true
+
+  const lastCell = (listBottomAnchorRef.value || cellRefs[messageItems.value.length - 1]) as any
+  if (lastCell) {
+    try {
+      const dom = uni.requireNativePlugin('dom')
+      dom.scrollToElement(lastCell, {
+        offset: 0,
+        animated: useAnimated
+      })
+    } catch (e) {
+      console.error('[MessageList] scrollToElement failed:', e)
+    }
+  }
+  showScrollToBottom.value = false
+}
+
+// 模板 @tap 专用：不把事件对象透传给 scrollToBottom
+const handleScrollToBottomTap = () => {
+  scrollToBottom(true)
+}
+
+const scrollToMessage = async (message: MessageInfo, animated = true) => {
+  const messageID = message?.msgID
+  if (!messageID) return
+
+
+  if (isMessageInList(messageID)) {
+    doScrollToMessage(messageID, animated)
+    return
+  }
+
+  await locateToMessage(message)
+
+  await nextTick()
+  const timer = addTimer(setTimeout(() => {
+    doScrollToMessage(messageID, animated)
+    clearTimer(timer)
+  }, 100))
+}
+
+const doScrollToMessage = (messageID: string, animated = true, highlight = true) => {
+  if (messageItems.value.length === 0) return
+  
+  const targetIndex = messageItems.value.findIndex(
+    item => item.type === 'message' && item.message?.msgID === messageID
+  )
+  
+  if (targetIndex === -1) {
+    return
+  }
+  
+  const targetCell = cellRefs[targetIndex]
+  
+  if (targetCell) {
+    // 同 scrollToBottom：animated 必须是真布尔，否则 iOS native 解析非布尔值会崩
+    try {
+      const dom = uni.requireNativePlugin('dom')
+      dom.scrollToElement(targetCell, {
+        offset: -100,
+        animated: animated === true
+      })
+    } catch (e) {
+      console.error('[MessageList] scrollToElement failed:', e)
+    }
+    
+    if (highlight) {
+      currentHighlightID.value = messageID
+      
+      const timer = addTimer(setTimeout(() => {
+        currentHighlightID.value = ''
+        clearTimer(timer)
+      }, 3000))
+    }
+  }
+}
+
+const isBottomAnchorVisible = ref(true)
+
+// ponytail: 只认「用户主动拖动离开底部」，不认锚点的实时可见性。
+// 1rpx 锚点在新消息插入时会被瞬时推出视口触发 @disappear，watch 读到这个抖动值就会
+// 误判成「用户在翻历史」→ 不滚动 + 闪一下新消息按钮。用 isDragging 过滤掉非用户操作的位移。
+const userLeftBottom = ref(false)
+
+const onBottomAnchorAppear = () => {
+  isBottomAnchorVisible.value = true
+  userLeftBottom.value = false
+  showScrollToBottom.value = false
+}
+
+const onBottomAnchorDisappear = () => {
+  isBottomAnchorVisible.value = false
+}
+
+const isAtBottom = (): boolean => !userLeftBottom.value
+
+const handleScroll = (e: any) => {
+  if (!e || !e.contentOffset) return
+
+  lastScrollTop.value = e.contentOffset.y
+
+  if (e.isDragging) {
+    // 首屏补正期间用户已上手拖动 → 停止后续自动滚到底，避免把用户拽回去
+    firstScreenUserScrolled = true
+    if (!isBottomAnchorVisible.value) userLeftBottom.value = true
+    emit('onMessageListTap');
+  }
+}
+
+const handleMessageListTap = () => {
+  emit('onMessageListTap')
+}
+
+const handleMessageTap = (message: MessageInfo) => {
+  emit('onMessageTap', message)
+}
+
+const FIRST_SCREEN_SCROLL_RETRY_DELAYS = [60, 160, 320, 600]
+
+
+let revealAfterFirstRetry = false
+try {
+  revealAfterFirstRetry = uni.getSystemInfoSync().platform === 'ios'
+} catch (e) {
+  revealAfterFirstRetry = false
+}
+
+const startFirstScreenFinalize = () => {
+  if (firstScreenStarted) return
+  firstScreenStarted = true
+
+  const locateMsg = props.locateMessage
+
+  if (locateMsg && locateMsg.msgID) {
+    nextTick(() => {
+      scrollToMessage(locateMsg, false)
+      revealList()
+    })
+    return
+  }
+
+  const scrollBottomIfNeeded = () => {
+    if (firstScreenUserScrolled) return
+    scrollToBottom(false)
+  }
+
+  nextTick(() => {
+    scrollBottomIfNeeded()
+    if (!revealAfterFirstRetry) revealList()
+  })
+
+  const onAllCellsBound = () => {
+    if (stopReadyWatch) {
+      stopReadyWatch()
+      stopReadyWatch = null
+    }
+    nextTick(() => scrollBottomIfNeeded())
+  }
+  if (readyCellCount.value >= messageItems.value.length) {
+    onAllCellsBound()
+  } else {
+    stopReadyWatch = watch(readyCellCount, (count) => {
+      if (count >= messageItems.value.length) onAllCellsBound()
+    })
+  }
+
+  FIRST_SCREEN_SCROLL_RETRY_DELAYS.forEach((delay, i) => {
+    const timer = addTimer(setTimeout(() => {
+      scrollBottomIfNeeded()
+      if (i === 0) revealList()
+      clearTimer(timer)
+    }, delay))
+  })
+}
+
+watch(messageList, (newMessages, oldMessages) => {
+  if (!newMessages || newMessages.length === 0) return
+  
+  if (isFirstLoad.value && newMessages.length > 0) {
+    startFirstScreenFinalize()
+    return
+  }
+  
+  if (pendingScrollMessage.value) {
+    const targetMessage = pendingScrollMessage.value
+    pendingScrollMessage.value = null
+    
+    nextTick(() => {
+      const timer = addTimer(setTimeout(() => {
+        doScrollToMessage(targetMessage.msgID, false, false)
+        clearTimer(timer)
+      }, 600))
+    })
+    return
+  }
+  
+  const lastNew = newMessages[newMessages.length - 1]
+  const lastOld = oldMessages && oldMessages.length > 0
+    ? oldMessages[oldMessages.length - 1]
+    : null
+  const hasNewMessage = !oldMessages ||
+    oldMessages.length === 0 ||
+    newMessages.length > oldMessages.length ||
+    (lastOld != null && lastNew.msgID !== lastOld.msgID)
+  
+  if (hasNewMessage) {
+    const lastMessage = lastNew
+    const isMyMessage = lastMessage.isSentBySelf
+    
+    if (!isMyMessage) {
+      clearConversationUnreadCount(props.conversationID)
+    }
+
+    // 先采样再改 showScrollToBottom，避免下面的判断依赖上面这次赋值的顺序
+    const wasAtBottom = isAtBottom()
+
+    if (!isMyMessage && !wasAtBottom && !hasNewerMessages.value) {
+      showScrollToBottom.value = true
+    }
+
+    if (isMyMessage || wasAtBottom) {
+      if (hasNewerMessages.value) return;
+      nextTick(() => {
+        const timer = setTimeout(() => {
+          scrollToBottom()
+          clearTimeout(timer);
+        }, 100)
+      })
+    }
+    
+    // 新消息到达时，通知 transform hook 处理
+    nextTick(() => {
+      listTransform.onNewMessage();
+    });
+  }
+}, { immediate: false })
+
+watch(() => props.locateMessage, (newMessage) => {
+  if (newMessage && newMessage.msgID && !isFirstLoad.value) {
+    nextTick(() => {
+      scrollToMessage(newMessage, true)
+    })
+  }
+})
+
+onBeforeMount(() => {
+  try {
+    const systemInfo = uni.getSystemInfoSync();
+    navbarHeightPx.value = (systemInfo.navbarHeight || 44) + rpxToPx(88);
+  } catch (e) {
+    navbarHeightPx.value = 44 + rpxToPx(88);
+  }
+});
+
+onMounted(() => {
+  if (messageList.value && messageList.value.length > 0) {
+    startFirstScreenFinalize()
+  }
+
+  uni.$on('audioConvertStreamGrow', handleAudioConvertStreamGrow)
+})
+
+const handleAudioConvertStreamGrow = (data: { msgID: string; boxRef?: any }) => {
+  if (!data || !data.msgID) return
+  if (showScrollToBottom.value) return
+
+  const targetIndex = messageItems.value.findIndex(
+    item => item.type === 'message' && item.message?.msgID === data.msgID
+  )
+  if (targetIndex < 0) return
+  const targetCell = cellRefs[targetIndex]
+  if (!targetCell) return
+  const listEl = messageListRef.value
+  if (!listEl) return
+
+  setTimeout(() => {
+    if (!data.boxRef) return
+    const dom = uni.requireNativePlugin('dom')
+    const inputTotalHeight = (props.inputPanelHeight || 0) + (props.inputToolbarHeight || 0)
+    const buffer = 16
+
+    // 第一步：用 boxRef 测量转写文本框位置，判断是否被遮挡
+    dom.getComponentRect(data.boxRef, (boxResult: any) => {
+      if (!boxResult || !boxResult.result || !boxResult.size) return
+
+      let windowHeight = 0
+      try {
+        windowHeight = uni.getSystemInfoSync().windowHeight || 0
+      } catch (e) {
+        windowHeight = 0
+      }
+      if (!windowHeight) return
+
+      const boxBottom = boxResult.size.bottom || 0
+      const boxHeight = boxResult.size.height || 0
+      const visibleBottom = windowHeight - inputTotalHeight
+
+      // box 已完全可见 → 不滚动
+      if (boxBottom <= visibleBottom - buffer) return
+      if (boxHeight <= 0) return
+
+      // 第二步：测 cell 与 list 的位置算 cellTopInList
+      dom.getComponentRect(targetCell, (cellResult: any) => {
+        if (!cellResult || !cellResult.result || !cellResult.size) return
+        dom.getComponentRect(listEl, (listResult: any) => {
+          if (!listResult || !listResult.result || !listResult.size) return
+
+          const cellTop = cellResult.size.top || 0
+          const listTop = listResult.size.top || 0
+          const cellTopInList = cellTop - listTop
+
+          // 净滚动 boxHeight：offset = boxHeight - cellTopInList
+          // 让 cell 顶部停在 list 视口顶部下方 (cellTopInList - boxHeight) 处
+          const offset = boxHeight - cellTopInList
+          dom.scrollToElement(targetCell, {
+            offset: offset,
+            animated: true
+          })
+        })
+      })
+    })
+  }, 380)
+}
+
+onBeforeUnmount(() => {
+  clearAllTimers()
+  if (stopReadyWatch) {
+    stopReadyWatch()
+    stopReadyWatch = null
+  }
+  clearConversationUnreadCount(props.conversationID);
+  uni.$off('audioConvertStreamGrow', handleAudioConvertStreamGrow)
+  destroyStore()
+})
+
+/**
+ * 获取最后一条消息底部到屏幕顶部的px值
+ */
+const getLastMessageCellPosition = async (): Promise<number> => {
+  return new Promise((resolve) => {
+    // 优先用底部锚点（高度 1rpx，bottom 就是内容底部），它始终对应当前列表真实末尾。
+    // cellRefs 只增不减（setCellRef 不清理），cellRefs.length 是历史最大值，
+    // 切会话/列表变短后 cellRefs[cellRefs.length - 1] 会命中已销毁的旧 cell 导致测量失真。
+    const lastCell = (listBottomAnchorRef.value || cellRefs[messageItems.value.length - 1]) as any;
+    if (!lastCell) {
+      resolve(0);
+      return;
+    }
+    const dom = uni.requireNativePlugin('dom');
+    dom.getComponentRect(lastCell, (result: any) => {
+      if (result && result.result && result.size) {
+        resolve(result.size.bottom);
+      } else {
+        resolve(9999);
+      }
+    });
+  });
+}
+
+// ==================== Transform Hook ====================
+const messageListContainerViewRef = ref(null);
+
+const listTransform = useListTransform({
+  getInputPanelHeight: () => props.inputPanelHeight,
+  getInputToolbarHeight: () => props.inputToolbarHeight,
+  getLastMessageBottom: getLastMessageCellPosition,
+  getMessageCount: () => messageItems.value.length,
+  listRef: messageListContainerViewRef,
+  threshold: 10
+});
+
+// 监听面板高度变化
+watch(() => props.inputPanelHeight, async (newHeight, oldHeight) => {
+  const isOpening = oldHeight === 0 && newHeight > 0;
+  
+  // 面板打开时先滚动到底部
+  if (newHeight > 0) {
+    scrollToBottom(false);
+    await nextTick();
+  }
+  
+  listTransform.onPanelHeightChange(isOpening);
+});
+
+defineExpose<MessageListExpose>({
+  scrollToBottom: scrollToBottom,
+  scrollToMessage: scrollToMessage,
+})
+</script>
+
+<style>
+.msg-list {
+  flex: 1;
+  position: relative;
+  background-color: #F9FAFC;
+}
+
+.msg-list__scroll {
+  flex: 1;
+  background-color: #F9FAFC;
+}
+
+.msg-list__scroll--hidden {
+  opacity: 0;
+}
+
+.msg-list__refresh {
+  width: 750rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+}
+
+.msg-list__refresh-text {
+  font-size: 28rpx;
+  color: #999999;
+  text-align: center;
+}
+
+.msg-list__refresh-indicator {
+  width: 36rpx;
+  height: 36rpx;
+  margin-left: 12rpx;
+  color: #999999;
+}
+
+.msg-list__scroll-btn {
+  position: absolute;
+  bottom: 30rpx;
+  right: 30rpx;
+  padding: 20rpx;
+  background-color: #ffffff;
+  border-radius: 6rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+}
+
+.msg-list__scroll-btn-icon {
+  width: 24rpx;
+  height: 24rpx;
+  margin-right: 12rpx;
+}
+
+.msg-list__scroll-btn-text {
+  font-size: 24rpx;
+  font-weight: 400;
+  color: #1C66E5;
+}
+</style>

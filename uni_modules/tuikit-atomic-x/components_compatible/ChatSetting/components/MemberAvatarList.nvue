@@ -1,0 +1,82 @@
+<template>
+  <view class="member-avatar-list">
+    <scroll-view class="member-avatar-list__scroll" scroll-x="true" :show-scrollbar="false">
+      <view class="member-avatar-list__content">
+        <view 
+          v-for="(item, index) in displayItems" 
+          :key="item.key"
+          class="member-avatar-list__item"
+          :class="{ 'member-avatar-list__item--no-margin-right': isLastInRow(index) }"
+          @tap="handleItemTap(item)"
+        >
+          <Avatar
+            v-if="item.kind === 'member'"
+            :src="item.member.avatarURL"
+            :name="getMemberName(item.member)"
+            :size="80"
+            :shape="'square'"
+            :defaultAvatarType="'user'"
+            pureMode
+          />
+          <view v-else class="member-avatar-list__btn">
+            <text class="member-avatar-list__btn-icon">{{ item.kind === 'add' ? '+' : '−' }}</text>
+          </view>
+          <text v-if="showName" class="member-avatar-list__name">{{ item.kind === 'member' ? getMemberName(item.member) : ' ' }}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script>
+import { Avatar } from '../../Avatar';
+export default {
+  components: { Avatar },
+  props: {
+    members: { type: Array, default: function() { return [] } },
+    maxDisplay: { type: Number, default: 5 },
+    showAddButton: { type: Boolean, default: false },
+    showRemoveButton: { type: Boolean, default: false },
+    showName: { type: Boolean, default: false },
+  },
+  computed: {
+    displayMembers() { return this.members.slice(0, this.maxDisplay) },
+    /**
+     * 把 members + add/remove 按钮合并为单一列表统一 v-for 渲染。
+     * 避免 nvue (vue2) 中「v-for + 同级 v-if 兄弟节点」在异步数据更新后
+     * 的渲染时序错乱（v-if 静态节点会跑到 v-for 列表前）。
+     */
+    displayItems() {
+      var arr = []
+      var members = this.displayMembers
+      for (var i = 0; i < members.length; i++) {
+        arr.push({ kind: 'member', key: 'm_' + members[i].userID, member: members[i] })
+      }
+      if (this.showAddButton) arr.push({ kind: 'add', key: '__add__' })
+      if (this.showRemoveButton) arr.push({ kind: 'remove', key: '__remove__' })
+      return arr
+    },
+  },
+  methods: {
+    isLastInRow(index) { return (index + 1) % 6 === 0 },
+    getMemberName(member) { return member.nameCard || member.nickname || member.userID || '' },
+    handleItemTap(item) {
+      if (item.kind === 'member') this.$emit('member-click', item.member)
+      else if (item.kind === 'add') this.$emit('add')
+      else if (item.kind === 'remove') this.$emit('remove')
+    },
+  },
+}
+</script>
+
+<style scoped>
+.member-avatar-list { background-color: #FFFFFF; }
+.member-avatar-list__scroll { flex: 1; }
+.member-avatar-list__content { flex-direction: row; padding: 32rpx 32rpx 0; flex-wrap: wrap; }
+.member-avatar-list__item { align-items: center; margin-right: 40rpx; margin-bottom: 24rpx; }
+.member-avatar-list__item--no-margin-right { margin-right: 0; }
+.member-avatar-list__item:last-child { margin-right: 0; }
+.member-avatar-list__name { font-size: 24rpx; color: rgba(0, 0, 0, 0.9); margin-top: 6rpx; max-width: 80rpx; text-align: center; lines: 1; }
+.member-avatar-list__btn { width: 80rpx; height: 80rpx; border-radius: 10rpx; justify-content: center; align-items: center; background-color: #F0F2F7; }
+.member-avatar-list__btn-icon { font-size: 48rpx; color: #999999; }
+</style>

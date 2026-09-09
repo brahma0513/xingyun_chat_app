@@ -1,0 +1,2117 @@
+<template>
+  <view id="message-input" ref="messageInputRef" class="message-input" @tap="">
+    <view
+      v-if="isRecording"
+      class="message-input__recording-overlay"
+      @tap.stop="onOverlayNoop"
+      @touchstart.stop="onOverlayNoop"
+      @touchmove.stop="onOverlayNoop"
+      @touchend.stop="onOverlayNoop"
+    >
+      <image 
+        class="message-input__recording-bottom-bg" 
+        src="/uni_modules/tuikit-atomic-x/static/assets/message-input/recording_bg.png" 
+        mode="aspectFill"
+      />
+      <view class="message-input__recording-content">
+        <view class="message-input__recording-indicator-wrapper">
+          <view :class="['message-input__recording-indicator', isCancelArea && 'message-input__recording-indicator--cancel']">
+            <text v-if="showCountdown" class="message-input__recording-countdown-text">
+              {{ countdownSeconds }}秒后停止录音
+            </text>
+            <view v-else class="message-input__waveform-group">
+              <view
+                v-for="(bar, index) in waveBarConfigs"
+                :key="index"
+                :ref="(el: unknown) => setWaveBarRef(el, index)"
+                :class="['message-input__wave-bar', `message-input__wave-bar--${bar.size}`]"
+              />
+            </view>
+          </view>
+          <view :class="['message-input__recording-arrow', isCancelArea && 'message-input__recording-arrow--cancel']" />
+        </view>
+        <text class="message-input__recording-text">
+          {{ isCancelArea ? '松开取消' : '松开发送' }}
+        </text>
+        <view :class="['message-input__recording-cancel-btn', isCancelArea && 'message-input__recording-cancel-btn--active']">
+          <image 
+            class="message-input__recording-cancel-icon"
+            src="/uni_modules/tuikit-atomic-x/static/icon/close.png"
+            mode="aspectFit"
+          />
+        </view>
+        <view :class="['message-input__recording-bottom', isCancelArea && 'message-input__recording-cancel-btn--active']">
+          <image 
+            class="message-input__recording-icon" 
+            src="/uni_modules/tuikit-atomic-x/static/icon/audio.png" 
+            mode="aspectFill"
+          />
+        </view>
+      </view>
+    </view>
+
+    <view id="message-input-toolbar" class="message-input__toolbar" :style="{ paddingBottom: safeAreaBottomRpx + 'rpx' }">
+      <view v-if="enableVoice" class="message-input__btn message-input__btn--first" @tap="handleMicTap">
+        <image 
+          v-if="inputState !== 'VOICE'" 
+          class="message-input__icon" 
+          src="/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_mic.png" 
+          mode="aspectFill"
+        />
+        <image 
+          v-else 
+          class="message-input__icon" 
+          src="/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_more.png" 
+          mode="aspectFill"
+          :style="{ transform: 'rotate(45deg)' }"
+        />
+      </view>
+
+      <view class="message-input__box">
+        <textarea
+          v-if="inputState !== 'VOICE'"
+          ref="textareaRef"
+          class="message-input__field"
+          v-model="inputText"
+          :confirm-type="confirmType"
+          :show-confirm-bar="false"
+          :auto-height="true"
+          :adjust-position="false"
+          :auto-focus="false"
+          :focus="focusTrigger"
+          :placeholder="''"
+          placeholder-class="message-input__placeholder"
+          :selection-start="cursorPosition"
+          :selection-end="cursorPosition"
+          :maxlength="-1"
+          :fixed="true"
+          @input="handleInput"
+          @blur="handleBlur"
+          @focus="handleFocus"
+          @touchstart="onTextareaTouchstart"
+          @linechange="onLinechange"
+        />
+        <view 
+          v-else 
+          :class="['message-input__record-trigger', isRecording && 'message-input__record-trigger--active']"
+          @touchstart="handleVoiceTouchStart"
+          @touchmove="handleVoiceTouchMove"
+          @touchend="handleVoiceTouchEnd"
+          @touchcancel="handleVoiceTouchEnd"
+        >
+          <text class="message-input__record-trigger-text">按住说话</text>
+        </view>
+      </view>
+
+      <view v-if="enableEmoji" class="message-input__btn" @tap="handleFaceTap">
+        <image class="message-input__icon" src="/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_face.png" mode="aspectFill" />
+      </view>
+
+      <view class="message-input__btn" @tap="handleSend">
+        <view v-if="hasContent" class="message-input__send-btn" >
+          <text class="message-input__send-btn-text">发送</text>  
+        </view>
+        <image v-else class="message-input__icon" src="/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_more.png" mode="aspectFill" @tap.stop="handleMoreTap" />
+      </view>
+    </view>
+    <view class="message-input__mask">
+      <view
+        class="message-input__panel"
+        ref="messageInputPanelRef"
+        :style="{
+          height: (inputPanelDisplayHeightPx) + 'px',
+        }"
+      >
+        <view class="message-input__panel-wrapper">
+          <ToolsPanel
+            v-if="showToolsPanel"
+            ref="toolsPanelRef"
+            :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: toolsPanelOpacity }"
+            :conversationID="conversationID"
+            :toolList="props.toolList"
+            :setOfflinePushInfo="setOfflinePushInfo"
+          />
+          <EmojiPanel 
+            v-if="showEmojiPanel"
+            ref="emojiPanelRef"
+            :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: emojiPanelOpacity }"
+            :conversationID="conversationID"
+            @select="handleEmojiSelect"
+            @delete="handleEmojiDelete"
+          />
+        </view>
+      </view>
+    </view>
+  </view>
+
+</template>
+
+<script lang="ts">
+// 单独的 script 块用于导出
+import { DEFAULT_TOOLS } from './types';
+export { DEFAULT_TOOLS } from './types';
+export type { ToolItem } from './types';
+</script>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, onBeforeMount, onUnmounted, watch, nextTick, getCurrentInstance } from 'vue';
+import type { Ref, ComputedRef } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import { throttle } from '../../utils/lodash';
+import { useMessageInputState } from '../../state/MessageInputState';
+import { resolveSendError } from './utils/resolveSendError';
+import { transformEmojiNameToKey, transformEmojiKeyToName, hasEmoji } from '../../utils/emojiUtils';
+import EmojiPanel from './EmojiPanel.nvue';
+import ToolsPanel from './ToolsPanel.nvue';
+import {
+  insertMention,
+  scanMentions,
+  tryDeleteWholeMention,
+  MAX_AT_USER_COUNT,
+  AT_ALL_TAG,
+  type MentionSegment,
+} from '../../utils/mention';
+import { GroupType } from '../../types/group';
+import { UserPickerType } from '../../types/userpicker';
+import { useGroupState } from '../../state/GroupState';
+import type { ToolItem } from './types';
+import { MessageType, MessageStatus } from '../../types/message';
+import type { MessageInfo, OfflinePushInfoResolver, SendMessagePayload, SendMessageOption } from '../../types/message';
+import { buildOfflinePushInfo } from '../../utils/buildOfflinePushInfo';
+import permission from '../../utils/permission';
+import { requestCallPermissions, showPermissionDialog } from '../../utils/callPermission';
+import { stopGlobalAudioPlayer, RECORDING_PSEUDO_ID } from '../../hooks/useAudioPlayer';
+import { prewarmFilePicker } from '../../hooks/useFilePicker';
+import { useCallState } from '../../state/CallState';
+
+const vueInstance = getCurrentInstance();
+
+// ==================== 类型定义 ====================
+
+/** 5个原子状态 */
+type InputState = 'NONE' | 'TEXT' | 'VOICE' | 'EMOJI' | 'TOOLS';
+
+/** 表情项 */
+interface EmojiItem {
+  key: string;
+  url?: string;
+  [key: string]: unknown;
+}
+
+/** 高度变化事件参数 */
+interface HeightChangePayload {
+  inputToolbarHeight: number;
+  inputPanelHeight: number;
+}
+
+/** 键盘高度变化事件参数 */
+interface KeyboardHeightChangeResult {
+  height: number;
+  duration: number;
+}
+
+/** 触摸事件 */
+interface TouchEventDetail {
+  touches: Array<{ pageY: number }>;
+}
+
+/** 录音停止结果 */
+interface RecorderStopResult {
+  tempFilePath: string;
+}
+
+/** 录音错误 */
+interface RecorderError {
+  errMsg: string;
+}
+
+/** 动画模块接口 */
+interface AnimationModule {
+  transition: (
+    el: unknown,
+    options: {
+      styles: Record<string, string>;
+      duration: number;
+      timingFunction?: string;
+    },
+    callback?: () => void
+  ) => void;
+}
+
+/** 组件暴露的方法 */
+interface MessageInputExpose {
+  collapse: () => void;
+  focus: () => void;
+  blur: () => void;
+  getState: () => InputState;
+}
+
+// ==================== Props ====================
+interface MessageInputProps {
+  conversationID: string;
+  enableVoice?: boolean;
+  enableEmoji?: boolean;
+  enableTools?: boolean;
+  toolList?: ToolItem[];
+  /**
+   * 是否启用 @ 群成员功能
+   * - true（默认）：群会话（非直播群）下输入 @ 触发选人页
+   * - false：完全禁用 @ 功能（textarea 不再响应 @ 字符、不跳转选人页、不维护 mentions）
+   * - 业务场景：直播聊天室等不需要 @ 的场景可关闭
+   */
+  enableMention?: boolean;
+  /**
+   * 业务方注入：在每次发送消息前回调本函数计算 offlinePushInfo
+   *
+   * - 同步函数；返回 OfflinePushInfo 表示附带 push；返回 null/undefined 表示不附带
+   * - 抛异常时组件兜底为不附带，不会阻断 send
+   * - resolver 收到 ctx 含 messageType / messageBody / conversationID
+   */
+  setOfflinePushInfo?: OfflinePushInfoResolver;
+}
+
+const props = withDefaults(defineProps<MessageInputProps>(), {
+  enableVoice: true,
+  enableEmoji: true,
+  enableTools: true,
+  enableMention: true,
+  conversationID: '',
+});
+
+// ==================== Emits ====================
+interface Emits {
+  (e: 'send', text: string): void;
+  (e: 'sendVoice', tempFilePath: string): void;
+  (e: 'heightChange', payload: HeightChangePayload): void;
+  (e: 'stateChange', state: InputState): void;
+}
+
+const emit = defineEmits<Emits>();
+
+// ==================== 常量 ====================
+const DEFAULT_PANEL_HEIGHT: number = 550; // 默认面板高度 (rpx) ≈ 275px
+const ANIMATION_DURATION: number = 220; // 动画时长 (ms)
+const CANCEL_THRESHOLD: number = 100; // 取消区域阈值 (px)
+const DEFAULT_CACHED_KEYBOARD_HEIGHT: number = 280; // 默认缓存的键盘高度 (px)
+let isJsCloseKeyboard = false;
+
+
+// ==================== 状态管理 ====================
+const messageInputState = useMessageInputState({
+  conversationID: props.conversationID,
+});
+
+// 通话状态（用于录音前拦截）
+const { selfInfo: callSelfInfo } = useCallState();
+
+/**
+ * 判断当前是否处于音视频通话中
+ * 与 ToolsPanel.startCall 内的判定一致：selfInfo.status === 1（呼叫中/待接听）或 2（通话中）
+ */
+const isInCallNow = (): boolean => {
+  const status = callSelfInfo?.value?.status;
+  return status === 1 || status === 2;
+};
+
+// ==================== 响应式状态 ====================
+
+/**
+ * 核心 FSM 状态 - 5个原子状态
+ * NONE  - 闲置状态
+ * TEXT  - 键盘输入状态
+ * VOICE - 语音输入状态
+ * EMOJI - 表情面板状态
+ * TOOLS - 工具面板状态
+ */
+const inputState: Ref<InputState> = ref('NONE');
+
+/**
+ * 上一个状态 - 用于 onKeyboardHeightChange 异步回调判断
+ * 因为键盘回调是异步的，需要知道是从哪个状态转换过来的
+ */
+const prevInputState: Ref<InputState> = ref('NONE');
+
+// 输入相关
+const inputText: Ref<string> = ref('');
+const confirmType: Ref<'send' | 'done'> = ref('done');
+
+// 最近一次键盘失焦前光标的位置
+// 如果使用 input 用它
+const lastCursorPosition: Ref<number> = ref(0);
+// selection-start/end 控制光标位置：-1 表示不控制（交由系统管理）
+// 仅在表情插入等需要主动定位光标的场景设置具体值，操作完毕后重置回 -1
+const cursorPosition: Ref<number> = ref(-1);
+
+// ==================== @ 群成员 状态 ====================
+const isGroupConversation = computed(() => props.conversationID.startsWith('group_'));
+const groupID = computed(() => isGroupConversation.value ? props.conversationID.replace('group_', '') : '');
+
+const { joinedGroupList } = useGroupState();
+const currentGroupType = computed(() => {
+  if (!isGroupConversation.value) return undefined;
+  const info = joinedGroupList.value.find(g => g.groupID === groupID.value);
+  return info?.groupType;
+});
+
+// 是否启用 @ 功能：仅群会话 & 非直播群（AVChatRoom 不支持 @ 消息）& 业务方未显式关闭
+const isAtSupported = computed(() => {
+  return props.enableMention === true && isGroupConversation.value && currentGroupType.value !== GroupType.AVChatRoom;
+});
+
+// mention 段（派生自 inputText + selectedMembers）
+const mentions = ref<MentionSegment[]>([]);
+const selectedMembers = ref<Map<string, string>>(new Map());
+
+// @ 触发位置：当输入 @ 字符并跳转到选人页时记录，便于回填时计算插入位置
+const mentionAnchor = ref(-1);
+
+// 标记：跳转选人页时置 true，从选人页返回时由 onShow 钩子消费并恢复 textarea 聚焦
+let pendingFocusAfterAtPicker = false;
+
+// 上一次 input 的文本与光标，用于整体删除判定
+const lastInputText = ref('');
+const lastInputCursor = ref(0);
+
+// @ 整体删除后的"冷静期"：v-model 同步到原生 textarea 是异步的，期间原生层
+// 会按自己的视角连续冒出 input 事件（尤其长按删除场景）。
+// 命中整段删除后进入冷静期，期间所有 input 事件都按"原生层视角为准"被动接受，
+// 不再触发新一轮整段删除，让 v-model 平滑追上。冷静期结束后恢复正常逻辑。
+const mentionDeleteCooldownUntil = ref(0);
+
+// 高度定义
+// 首次测量前的兜底高度（单行工具栏）。iOS 上首帧测量会拿到偏大的中间值，
+// 靠 onBeforeMount 里延迟测量规避，这里只兜住"测量失败"的情况。
+const TOOLBAR_FALLBACK_HEIGHT_PX = 43;
+
+/** 归一化 boundingClientRect 的 height：无效值回退兜底 */
+const normalizeToolbarHeight = (raw: number | undefined | null): number => {
+  const h = Math.round(raw || 0);
+  return h > 0 ? h : TOOLBAR_FALLBACK_HEIGHT_PX;
+};
+
+let inputToolbarHeightPx: number = TOOLBAR_FALLBACK_HEIGHT_PX;
+let lastInputPopupHeightPx = ref(0);
+const currentKeyboardHeightPx: Ref<number> = ref(0); // H_kb: 实时键盘高度 (px)
+const cachedKeyboardHeight: Ref<number> = ref(-1); // 缓存的键盘高度 (px)，兜底值
+const safeAreaBottomRpx: Ref<number> = ref(0); // 安全区高度
+
+// 语音相关
+const isRecording: Ref<boolean> = ref(false);
+const isCancelArea: Ref<boolean> = ref(false);
+const recordStartY: Ref<number> = ref(0);
+const recordingDuration: Ref<number> = ref(0); // 录音时长（秒）
+let recordingTimer: ReturnType<typeof setInterval> | null = null; // 录音计时器
+let waveAnimationTimer: ReturnType<typeof setInterval> | null = null; // 波形动画计时器
+let waveAnimationPhase: number = 0; // 波形动画相位
+// 是否因达到最大时长（60s）自动停止：此时强制发送，忽略手指当前的 isCancelArea 状态
+let isAutoStopByMaxDuration: boolean = false;
+
+// UI 状态
+let lastOperationTime: number = 0;
+const OPERATION_TIME_THRESHOLD: number = 300; // 操作时间阈值 (ms)
+const isFocused: Ref<boolean> = ref(false);
+// textarea 响应式 focus 开关：iOS nvue 方法式 focus() 不会唤起软键盘，必须通过
+// :focus 属性从 false → true 的变化来触发（uni-app 官方做法）
+const focusTrigger: Ref<boolean> = ref(false);
+const isHiddenMessageInputPanel: Ref<boolean> = ref(true);
+
+// DOM 引用
+const messageInputRef: Ref<unknown | null> = ref(null);
+const messageInputToolbarRef: Ref<unknown | null> = ref(null);
+const messageInputPanelRef: Ref<unknown | null> = ref(null);
+const textareaRef: Ref<{ focus: () => void; blur: () => void } | null> = ref(null);
+const emojiPanelRef: Ref<unknown | null> = ref(null);
+const toolsPanelRef: Ref<unknown | null> = ref(null);
+// 波形条 refs - 使用数组管理
+const waveBarRefs: Ref<(unknown | null)[]> = ref([]);
+// 波形条配置（非对称：xs, lg, md, xl, sm, lg 重复两组）
+const waveBarConfigs = [
+  { size: 'xs', baseHeight: 0.2 },
+  { size: 'lg', baseHeight: 0.75 },
+  { size: 'md', baseHeight: 0.5 },
+  { size: 'xl', baseHeight: 1.0 },
+  { size: 'sm', baseHeight: 0.35 },
+  { size: 'lg', baseHeight: 0.75 },
+  { size: 'xs', baseHeight: 0.2 },
+  { size: 'lg', baseHeight: 0.75 },
+  { size: 'md', baseHeight: 0.5 },
+  { size: 'xl', baseHeight: 1.0 },
+  { size: 'sm', baseHeight: 0.35 },
+  { size: 'lg', baseHeight: 0.75 },
+];
+// 设置波形条 ref
+const setWaveBarRef = (el: unknown, index: number): void => {
+  if (el) {
+    waveBarRefs.value[index] = el;
+  }
+};
+
+// 面板显示状态（控制 v-if）
+const showEmojiPanel: Ref<boolean> = ref(false);
+const showToolsPanel: Ref<boolean> = ref(false);
+
+// 面板透明度（控制动画）
+const emojiPanelOpacity: Ref<number> = ref(0);
+const toolsPanelOpacity: Ref<number> = ref(0);
+
+// 面板切换动画进行中标志
+const isPanelSwitching: Ref<boolean> = ref(false);
+
+
+// 原生动画模块
+const animation: AnimationModule = uni.requireNativePlugin('animation');
+
+// ==================== 计算属性 ====================
+const hasContent: ComputedRef<boolean> = computed(() => inputText.value.trim().length > 0);
+
+// 录音时长显示文本
+const recordingDurationText = computed(() => {
+  const minutes = Math.floor(recordingDuration.value / 60);
+  const seconds = recordingDuration.value % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+});
+
+// 最后 10 秒倒计时阶段：录到 50s 及之后
+// MAX_RECORD_DURATION = 60s, COUNTDOWN_START_AT = 50s
+const COUNTDOWN_START_AT = 50;
+const showCountdown = computed(() => recordingDuration.value >= COUNTDOWN_START_AT);
+// 剩余秒数：50s → 10, 51s → 9, ..., 59s → 1
+const countdownSeconds = computed(() => {
+  const remain = 60 - recordingDuration.value;
+  return remain > 0 ? remain : 1;
+});
+
+const inputPanelDisplayHeightPx = computed(() => {
+  if (uni.getSystemInfoSync().platform === 'ios') {
+    if (lastInputPopupHeightPx.value <= 0) {
+      return (cachedKeyboardHeight.value > 0 ? cachedKeyboardHeight.value : DEFAULT_CACHED_KEYBOARD_HEIGHT);
+    } else {
+      return lastInputPopupHeightPx.value;
+    }
+  } else {
+    if (lastInputPopupHeightPx.value <= 0) {
+      return (cachedKeyboardHeight.value > 0 ? cachedKeyboardHeight.value : DEFAULT_CACHED_KEYBOARD_HEIGHT);
+    } else {
+      return lastInputPopupHeightPx.value;
+    }
+  }
+});
+
+
+// ==================== 工具函数 ====================
+const pxToRpx = (px: number): number => {
+  const systemInfo = uni.getSystemInfoSync();
+  const screenWidth: number = systemInfo.screenWidth || 375;
+  return Math.round((px / screenWidth) * 750);
+};
+
+const rpxToPx = (rpx: number): number => {
+  const systemInfo = uni.getSystemInfoSync();
+  const screenWidth: number = systemInfo.screenWidth || 375;
+  return (rpx / 750) * screenWidth;
+};
+
+// ==================== 初始化 ====================
+onBeforeMount(() => {
+  try {
+    // 必须使用 sync 的方法，否则时序会出问题
+    // const storageValue = uni.getStorageSync('cachedKeyboardHeight');
+    // if (typeof storageValue === 'number' && storageValue > 0) {
+    //   cachedKeyboardHeight.value = storageValue;
+    //   return;
+    // }
+  } catch  {
+    return;
+  }
+});
+
+onBeforeMount(() => {
+  // 获取安全区域高度
+  const systemInfo = uni.getSystemInfoSync();
+  safeAreaBottomRpx.value = Math.max(pxToRpx(systemInfo.safeAreaInsets?.bottom || 0), 16);
+
+  // iOS 首帧测量常拿到偏大的中间值（54 vs 稳态 43），布局稳定后才是真实高度，
+  // 因此延迟一次测量再 emit；期间用初值 43 撑住，避免高度抖动闪屏。
+  // Android 无此抖动，走立即测量 —— 否则 MessageList 会先按初值滚到底，
+  // 待延迟 emit 改变 paddingBottom 后最后一条消息被顶下去，需手动滑动才能看到。
+  const isIOS: boolean = systemInfo.platform === 'ios';
+  nextTick(() => {
+    if (isIOS) {
+      setTimeout(() => measureToolbar(), 900);
+    } else {
+      measureToolbar();
+    }
+  });
+})
+
+onMounted(() => {
+
+  // 监听键盘高度变化
+  uni.onKeyboardHeightChange(onKeyboardChange);
+
+  // 监听撤回消息的"重新编辑"事件（组件内部自洽，不依赖业务层）
+  uni.$on('atomicx-reEdit', onReEdit);
+
+  // 预热文件选择器的 Android 桥接类（同步跨桥约 500-1000ms）
+  // 延后到 MessageList 首屏完成后触发（首屏展示逻辑约 150ms 完成），
+  // 500ms 错开首屏关键路径，用户首次点"文件"时类已就绪
+  setTimeout(() => {
+    prewarmFilePicker();
+  }, 500);
+});
+
+onShow(() => {
+  // 从选人页返回时恢复 textarea 聚焦（无论选中或取消都聚焦）
+  if (!pendingFocusAfterAtPicker) return;
+  pendingFocusAfterAtPicker = false;
+
+  switchMode('TEXT');
+  focusTrigger.value = true;
+});
+
+onUnmounted(() => {
+  uni.offKeyboardHeightChange(onKeyboardChange);
+  uni.$off('atomicx-reEdit', onReEdit);
+  messageInputState?.destroyStore();
+});
+
+// ==================== 键盘监听（被动响应） ====================
+/**
+ * 键盘高度变化回调 - 异步触发
+ * 
+ * 核心逻辑：
+ * 1. 第一组（→TEXT）的动画完全依赖此回调驱动
+ * 2. 需要根据 prevInputState 和 inputState 判断如何操作
+ * 
+ * 场景分析：
+ * - height > 0: 键盘弹起
+ *   - prevState=NONE/VOICE → TEXT: 键盘弹起，TransY 随键盘上移
+ *   - prevState=EMOJI/TOOLS → TEXT: 键盘弹起，此时 Area B 应该已经被瞬间收起
+ * 
+ * - height = 0: 键盘收起
+ *   - TEXT → NONE: 用户点击消息列表收起键盘
+ *   - TEXT → EMOJI/TOOLS: switchMode 已调用 hideKeyboard，此回调不应干扰
+ *   - TEXT → VOICE: switchMode 已调用 hideKeyboard，此回调不应干扰
+ */
+const onKeyboardChange = (res: KeyboardHeightChangeResult): void => {
+  const { height, duration } = res;
+  const animDuration: number = duration > 0 ? duration : ANIMATION_DURATION;
+  const currentState = inputState.value;
+  const prevState = prevInputState.value;
+
+  // 更新实时键盘高度
+  currentKeyboardHeightPx.value = height;
+
+  // 缓存键盘高度（首次弹出时）
+  if (height > 0 && cachedKeyboardHeight.value === -1) {
+    cachedKeyboardHeight.value = height;
+    uni.setStorage({
+      key: 'cachedKeyboardHeight',
+      data: height,
+    });
+  }
+
+  if (height > 0) {
+    lastInputPopupHeightPx.value = height;
+    // ========== 键盘弹起 ==========
+    if (currentState === 'TEXT' || currentState === 'NONE') {
+      // 来自 EMOJI/TOOLS: Area B 已被瞬间设为 0，直接执行动画
+      // 来自 NONE/VOICE: Area B 本来就是 0
+      animateTranslateInputY(-height, animDuration);
+    } else if (currentState === 'EMOJI' || currentState === 'TOOLS') {
+      // 快速切换场景：用户在 TOOLS/EMOJI 状态下快速点击 textarea
+      // 键盘弹起时状态还没切换过来，此时应该切换到 TEXT 并收起面板
+      // 不执行动画，因为面板还在，等 switchMode 处理
+    }
+  } else {
+    if (isJsCloseKeyboard) {
+      isJsCloseKeyboard = false;
+      return;
+    }
+    // ========== 键盘收起 ==========
+    // 只有当前状态是 TEXT 且目标不是 EMOJI/TOOLS/VOICE 时，才执行归零动画
+    // 如果是 switchMode 主动切换到 EMOJI/TOOLS/VOICE，那边已经处理了动画
+    if (currentState === 'TEXT') {
+      // TEXT 状态下键盘收起 → 切换到 NONE
+      animateTranslatePanelY('translateY(100%)', ANIMATION_DURATION);
+      animateTranslateInputY(0, animDuration);
+      switchMode('NONE');
+    }
+
+    if (currentState === 'EMOJI' || currentState === 'TOOLS') {
+      switchMode('NONE');
+    }
+
+    if (currentState === 'NONE') {
+      animateTranslateInputY(0, animDuration);
+    }
+	
+    // 其他状态（EMOJI/TOOLS/VOICE/NONE）收到键盘收起回调，忽略
+  }
+
+  // 更新 Spacer
+  updateSpacer();
+};
+
+// ==================== 动画函数 ====================
+const animateTranslateInputY = (targetY: number, duration: number, callback?: () => void): void => {
+  if (!messageInputRef.value) return;
+
+  animation.transition(
+    messageInputRef.value,
+    {
+      styles: { transform: `translateY(${targetY}px)` },
+      duration: duration,
+      timingFunction: 'ease-out',
+    },
+    () => {
+      if (callback) callback();
+    }
+  );
+};
+
+const animateTranslatePanelY = (transform: string, duration: number, callback?: () => void): void => {
+  return;
+  if (!messageInputPanelRef.value) return;
+
+  animation.transition(
+    messageInputPanelRef.value,
+    {
+      styles: { transform: transform },
+      duration: duration || 100,
+      timingFunction: 'ease-out',
+    },
+    () => {
+      if (callback) callback();
+    }
+  );
+};
+
+// ==================== 面板切换动画（Cross Fade） ====================
+const PANEL_FADE_DURATION = 200; // 面板切换动画时长
+
+/**
+ * Cross Fade：EMOJI ↔ TOOLS 切换
+ * 串行动画：旧面板先淡出，完全消失后新面板再淡入
+ */
+const crossFadeTo = (target: 'EMOJI' | 'TOOLS'): void => {
+  if (isPanelSwitching.value) return;
+  isPanelSwitching.value = true;
+  
+  const isToEmoji = target === 'EMOJI';
+  const oldPanelRef = isToEmoji ? toolsPanelRef.value : emojiPanelRef.value;
+  
+  // 第一步：旧面板淡出
+  if (oldPanelRef) {
+    animation.transition(oldPanelRef, {
+      styles: { opacity: 0 },
+      duration: PANEL_FADE_DURATION,
+      timingFunction: 'ease-out'
+    }, () => {
+      // 旧面板完全消失后，移除并显示新面板
+      if (isToEmoji) {
+        showToolsPanel.value = false;
+        toolsPanelOpacity.value = 0;
+        showEmojiPanel.value = true;
+        emojiPanelOpacity.value = 0;
+      } else {
+        showEmojiPanel.value = false;
+        emojiPanelOpacity.value = 0;
+        showToolsPanel.value = true;
+        toolsPanelOpacity.value = 0;
+      }
+      
+      // 等待新面板 DOM 渲染
+      setTimeout(() => {
+        const newPanelRef = isToEmoji ? emojiPanelRef.value : toolsPanelRef.value;
+        
+        // 第二步：新面板淡入
+        if (newPanelRef) {
+          animation.transition(newPanelRef, {
+            styles: { opacity: 1 },
+            duration: PANEL_FADE_DURATION,
+            timingFunction: 'ease-out'
+          }, () => {
+            if (isToEmoji) {
+              emojiPanelOpacity.value = 1;
+            } else {
+              toolsPanelOpacity.value = 1;
+            }
+            isPanelSwitching.value = false;
+          });
+        } else {
+          isPanelSwitching.value = false;
+        }
+      }, 16);
+    });
+  } else {
+    isPanelSwitching.value = false;
+  }
+};
+
+/**
+ * 直接显示表情面板（无动画，用于 NONE/TEXT → EMOJI 场景）
+ */
+const showEmojiPanelImmediate = (): void => {
+  showEmojiPanel.value = true;
+  emojiPanelOpacity.value = 1;
+};
+
+/**
+ * 直接显示工具面板（无动画，用于 NONE/TEXT → TOOLS 场景）
+ */
+const showToolsPanelImmediate = (): void => {
+  showToolsPanel.value = true;
+  toolsPanelOpacity.value = 1;
+};
+
+/**
+ * 隐藏表情面板（带动画）
+ */
+const hideEmojiPanelWithAnimation = (callback?: () => void): void => {
+  if (!showEmojiPanel.value) {
+    callback?.();
+    return;
+  }
+  
+  if (emojiPanelRef.value) {
+    animation.transition(emojiPanelRef.value, {
+      styles: { opacity: 0 },
+      duration: PANEL_FADE_DURATION,
+      timingFunction: 'ease-out'
+    }, () => {
+      showEmojiPanel.value = false;
+      emojiPanelOpacity.value = 0;
+      callback?.();
+    });
+  } else {
+    showEmojiPanel.value = false;
+    emojiPanelOpacity.value = 0;
+    callback?.();
+  }
+};
+
+/**
+ * 隐藏工具面板（带动画）
+ */
+const hideToolsPanelWithAnimation = (callback?: () => void): void => {
+  if (!showToolsPanel.value) {
+    callback?.();
+    return;
+  }
+  
+  if (toolsPanelRef.value) {
+    animation.transition(toolsPanelRef.value, {
+      styles: { opacity: 0 },
+      duration: PANEL_FADE_DURATION,
+      timingFunction: 'ease-out'
+    }, () => {
+      showToolsPanel.value = false;
+      toolsPanelOpacity.value = 0;
+      callback?.();
+    });
+  } else {
+    showToolsPanel.value = false;
+    toolsPanelOpacity.value = 0;
+    callback?.();
+  }
+};
+
+/**
+ * 隐藏所有面板（带动画）
+ */
+const hideAllPanelsWithAnimation = (callback?: () => void): void => {
+  let completed = 0;
+  const total = (showEmojiPanel.value ? 1 : 0) + (showToolsPanel.value ? 1 : 0);
+  
+  if (total === 0) {
+    callback?.();
+    return;
+  }
+  
+  const checkComplete = () => {
+    completed++;
+    if (completed >= total) {
+      callback?.();
+    }
+  };
+  
+  if (showEmojiPanel.value) {
+    hideEmojiPanelWithAnimation(checkComplete);
+  }
+  if (showToolsPanel.value) {
+    hideToolsPanelWithAnimation(checkComplete);
+  }
+};
+
+// ==================== Spacer 高度更新 ====================
+const updateSpacer = (): void => {
+  const areaBHeightPx: number = inputPanelDisplayHeightPx.value;
+
+  let currentInputPanelHeight: number = 0;
+  switch (inputState.value) {
+    case 'NONE':
+    case 'VOICE':
+      // 仅 Area A + 安全区
+      break;
+    case 'TEXT':
+      // Area A + 键盘高度
+      currentInputPanelHeight = areaBHeightPx;
+      break;
+    case 'EMOJI':
+      currentInputPanelHeight = areaBHeightPx;
+      break;
+    case 'TOOLS':
+      currentInputPanelHeight = areaBHeightPx;
+      break;
+  }
+
+
+  emit('heightChange', {
+    inputToolbarHeight: Math.round(inputToolbarHeightPx),
+    inputPanelHeight: Math.round(currentInputPanelHeight)
+  });
+};
+
+/** 测量工具栏高度并同步 spacer */
+const measureToolbar = () => {
+  const query = uni.createSelectorQuery().in(vueInstance.proxy);
+  query
+    .select("#message-input-toolbar")
+    .boundingClientRect((data) => {
+      inputToolbarHeightPx = normalizeToolbarHeight(data?.height);
+      updateSpacer();
+    })
+    .exec();
+}
+
+// ==================== 核心状态机 ====================
+/**
+ * 状态切换函数 - 基于5个原子状态的FSM
+ * 
+ * @param targetState 目标状态
+ * 
+ * 状态转换矩阵：
+ * 
+ * 第一组：→ TEXT (唤起键盘)
+ * - 不做任何手动动画，完全依赖 onKeyboardHeightChange 回调驱动 TransY
+ * - NONE → TEXT: 保持 Area B = 0, focus()
+ * - VOICE → TEXT: 保持 Area B = 0, focus(), UI变回输入框
+ * - EMOJI → TEXT: 瞬间设 Area B = 0, focus()
+ * - TOOLS → TEXT: 瞬间设 Area B = 0, focus()
+ * 
+ * 第二组：→ EMOJI (打开表情)
+ * - TEXT → EMOJI: 视觉补偿 (Magic), 设 Area B = H_panel, hide()
+ * - NONE → EMOJI: 设 Area B = H_panel, 无动画
+ * - VOICE → EMOJI: 设 Area B = H_panel, UI变回输入框
+ * - TOOLS → EMOJI: 保持 Area B = H_panel, 仅切换内容
+ * 
+ * 第三组：→ TOOLS (打开工具箱)
+ * - 逻辑与 → EMOJI 完全一致
+ * 
+ * 第四组：→ VOICE (语音模式)
+ * - TEXT → VOICE: 保持 Area B = 0, hide(), UI变为"按住说话"
+ * - NONE → VOICE: 保持 Area B = 0, 仅UI变化
+ * - EMOJI → VOICE: 设 Area B = 0, UI变化
+ * - TOOLS → VOICE: 设 Area B = 0, UI变化
+ * 
+ * 第五组：→ NONE (收起/闲置)
+ * - TEXT → NONE: 保持 Area B = 0, hide(), TransY 由键盘回调驱动
+ * - EMOJI → NONE: 设 Area B = 0
+ * - TOOLS → NONE: 设 Area B = 0
+ * - VOICE → NONE: 通常不会发生
+ */
+const switchMode = (targetState: InputState): void => {
+  const currentState: InputState = inputState.value;
+  
+  // 相同状态，忽略
+  if (currentState === targetState) {
+    return;
+  }
+
+
+  // 记录上一个状态（供 onKeyboardChange 使用）
+  prevInputState.value = currentState;
+  
+  // 更新当前状态
+  inputState.value = targetState;
+  emit('stateChange', targetState);
+
+  const currentKbHeight: number = currentKeyboardHeightPx.value; // 实时键盘高度 (px)
+
+  // ==================== 第一组：→ TEXT ====================
+  if (targetState === 'TEXT') {
+    if (currentState === 'EMOJI' || currentState === 'TOOLS') {
+      // EMOJI/TOOLS → TEXT: 抢占式，先收起面板腾出空间
+      // 如果键盘已经弹起（快速切换场景），不需要再 blur/focus
+      if (currentKeyboardHeightPx.value > 0) {
+        // 键盘已弹起，只需收起面板
+        setTimeout(() => {
+          hideAllPanelsWithAnimation();
+          animateTranslatePanelY('translateY(100%)', 0);
+        }, ANIMATION_DURATION);
+      } else {
+        if (uni.getSystemInfoSync().platform === 'ios') {
+          if (!isFocused.value) {
+            textareaRef.value?.focus();
+          }
+        } else {
+          // 键盘未弹起，需要触发键盘
+          textareaRef.value?.blur();
+          textareaRef.value?.focus();
+        }
+        setTimeout(() => {
+          hideAllPanelsWithAnimation();
+          animateTranslatePanelY('translateY(100%)', 0);
+        }, ANIMATION_DURATION);
+      }
+    } else if (currentState === 'VOICE') {
+      // VOICE → TEXT: textarea 由 v-if 重新挂载，需要触发 focus 弹起键盘
+      // iOS nvue 下方法式 focus() 不会唤起软键盘，必须让 :focus 属性发生 false → true 变化
+      // Android nvue 下原生节点挂载是异步的，nextTick 可能早于原生 DOM 就位
+      // 所以：先置 false → 等待原生节点挂载（nextTick + setTimeout 双层） → 置 true + 方法式 focus 双保险
+      focusTrigger.value = false;
+      nextTick(() => {
+        // setTimeout 让出一轮事件循环，确保 nvue 原生 textarea 节点已挂载完毕
+        // 否则 Android 上会间歇性 focus 失败：节点未挂载时设置 :focus=true，被当作初始 prop 忽略
+        setTimeout(() => {
+          focusTrigger.value = true;
+          // 兼容 Android：方法式 focus 在 Android nvue 上可靠
+          textareaRef.value?.focus();
+        }, 50);
+      });
+    }
+    return;
+  }
+
+  // ==================== 第二组：→ EMOJI ====================
+  if (targetState === 'EMOJI') {
+    if (currentState === 'NONE') {
+      // NONE → EMOJI: 面板滑入，内容直接可见
+      showEmojiPanelImmediate();
+      animateTranslateInputY(
+        // cachedKeyboardHeight.value > 0 ? -cachedKeyboardHeight.value : -DEFAULT_CACHED_KEYBOARD_HEIGHT,
+        -280,
+        ANIMATION_DURATION
+      );
+      lastInputPopupHeightPx.value = 280;
+      animateTranslatePanelY('translateY(0%)', ANIMATION_DURATION);
+    }
+
+    if (currentState === 'TOOLS') {
+      // TOOLS → EMOJI: Cross Fade 切换
+      crossFadeTo('EMOJI');
+      return;
+    }
+
+    if (currentState === 'TEXT') {
+      // TEXT → EMOJI: 面板直接显示，内容直接可见
+      showEmojiPanelImmediate();
+      animateTranslatePanelY('translateY(0%)', 0);
+	    isJsCloseKeyboard = true;
+      uni.hideKeyboard();
+    } else if (currentState === 'VOICE') {
+      // VOICE → EMOJI: 与 NONE → EMOJI 行为一致，面板滑入并撑开输入区
+      showEmojiPanelImmediate();
+      animateTranslateInputY(-280, ANIMATION_DURATION);
+      lastInputPopupHeightPx.value = 280;
+      animateTranslatePanelY('translateY(0%)', ANIMATION_DURATION);
+    }
+    updateSpacer();
+    return;
+  }
+
+  // ==================== 第三组：→ TOOLS ====================
+  if (targetState === 'TOOLS') {
+    if (currentState === 'NONE') {
+      // NONE → TOOLS: 面板滑入，内容直接可见
+      showToolsPanelImmediate();
+      animateTranslateInputY(
+        -280,
+        ANIMATION_DURATION
+      );
+      lastInputPopupHeightPx.value = 280;
+
+      animateTranslatePanelY('translateY(0%)', ANIMATION_DURATION);
+    }
+
+    if (currentState === 'EMOJI') {
+      // EMOJI → TOOLS: Cross Fade 切换
+      crossFadeTo('TOOLS');
+      return;
+    }
+
+    if (currentState === 'TEXT') {
+      // TEXT → TOOLS: 面板直接显示，内容直接可见
+      showToolsPanelImmediate();
+      animateTranslatePanelY('translateY(0%)', 0);
+      isJsCloseKeyboard = true;
+      textareaRef.value?.blur();
+    } else if (currentState === 'VOICE') {
+      // VOICE → TOOLS: 与 NONE → TOOLS 行为一致，面板滑入并撑开输入区
+      showToolsPanelImmediate();
+      animateTranslateInputY(-280, ANIMATION_DURATION);
+      lastInputPopupHeightPx.value = 280;
+      animateTranslatePanelY('translateY(0%)', ANIMATION_DURATION);
+    }
+    
+    updateSpacer();
+    return;
+  }
+
+  // ==================== 第四组：→ VOICE ====================
+  if (targetState === 'VOICE') {
+    // 重置占位高度：VOICE 模式不占用 Area B，避免切回其他模式时沿用旧值
+    lastInputPopupHeightPx.value = 0;
+    // 复位响应式 focus 开关：textarea 将被 v-if 卸载，@blur 可能不触发 handleBlur
+    focusTrigger.value = false;
+
+    if (currentState === 'TEXT') {
+      // TEXT → VOICE: 收键盘 + 输入区归位
+      textareaRef.value?.blur();
+      isJsCloseKeyboard = true;
+      uni.hideKeyboard();
+      animateTranslateInputY(0, ANIMATION_DURATION);
+    } else if (currentState === 'EMOJI' || currentState === 'TOOLS') {
+      // EMOJI/TOOLS → VOICE: 收起面板 + 输入区归位
+      hideAllPanelsWithAnimation();
+      animateTranslateInputY(0, ANIMATION_DURATION);
+    }
+    // NONE → VOICE: 位置本就为 0，仅 UI 变化
+
+    updateSpacer();
+    return;
+  }
+
+  // ==================== 第五组：→ NONE ====================
+  if (targetState === 'NONE') {
+    if (currentState === 'TEXT') {
+      // TEXT → NONE: hide(), TransY 由 onKeyboardChange 驱动
+    } else if (currentState === 'EMOJI' || currentState === 'TOOLS') {
+      // EMOJI/TOOLS → NONE: 收起面板
+      hideAllPanelsWithAnimation();
+      animateTranslateInputY(0, ANIMATION_DURATION);
+      animateTranslatePanelY('translateY(100%)', 0);
+    }
+	  textareaRef.value?.blur();
+    // VOICE → NONE: 通常不会发生
+    updateSpacer();
+    return;
+  }
+}
+
+// ==================== 事件处理 ====================
+const onLinechange = () => {
+  measureToolbar();
+}
+
+const onTextareaTouchstart = throttle((e) => {
+  if (Date.now() - lastOperationTime < OPERATION_TIME_THRESHOLD) {
+    return;
+  }
+  lastOperationTime = Date.now();
+  isFocused.value = true;
+  switchMode('TEXT');
+}, 250, { leading: true, trailing: false });
+
+// 输入框聚焦
+const handleFocus = (e): void => {
+  isFocused.value = true;
+  if (inputState.value !== 'TEXT') {
+    switchMode('TEXT');
+  }
+};
+
+// 输入框失焦
+const handleBlur = (event: { detail: { value: string, cursor: number } }): void => {
+  isFocused.value = false;
+  // 同步复位响应式 focus 开关，保证下一次 focusTrigger=false→true 的变化能被识别
+  focusTrigger.value = false;
+  lastCursorPosition.value = event.detail.cursor;
+};
+
+// 输入事件
+const handleInput = (e: { detail: { value: string; cursor?: number } }): void => {
+  let newText = e.detail.value;
+  let newCursor = typeof e.detail.cursor === 'number' ? e.detail.cursor : newText.length;
+
+  // 归一化：粘贴/手动输入带进来的 [TUIEmoji_Xxx] key 立即替换为中文名 [微笑]，
+  // 与 EmojiPanel 选中后的形态保持一致；handleSend 仍会用 transformEmojiNameToKey 反查回 key 发送。
+  // 仅当 newText 中含 [TUIEmoji_*] 时才进入转换分支，避免每次按键都跑正则。
+  if (hasEmoji(newText)) {
+    // 按"光标前/后"分别转换，保持光标在等价位置（key 和 name 长度不一）
+    const beforeCursor = newText.slice(0, newCursor);
+    const afterCursor = newText.slice(newCursor);
+    const normalizedBefore = transformEmojiKeyToName(beforeCursor);
+    const normalizedAfter = transformEmojiKeyToName(afterCursor);
+    newText = normalizedBefore + normalizedAfter;
+    newCursor = normalizedBefore.length;
+    // 立刻同步 inputText，让 v-model 把转换后的文本反向写回原生 textarea，
+    // 用户视觉上看到的就是"粘贴后立刻变成 [微笑]"
+    inputText.value = newText;
+    cursorPosition.value = newCursor;
+  }
+
+  // 0. 冷静期：刚命中过整段删除，v-model 同步到原生 textarea 需要时间。
+  //    期间原生层会按"删除前视角 -1 字符"的速率连续冒 input 事件（长按删除）。
+  //    若被动接受会把已删的整段 mention 又写回来；若按内容差量计算又会一字一字
+  //    破坏下一个 mention 段。所以冷静期内一律丢弃 input 事件 ——
+  //    视觉上 textarea 维持在"整段删除后"状态，给用户明确的边界信号：
+  //    刚才那段 @xxx 被作为整体删除，请松开后重新按下继续删除。
+  //    长度守卫：一旦 newText.length <= lastInputText.length（原生层已追上或用户重新按了一次），
+  //    立即解除冷静期。
+  if (Date.now() < mentionDeleteCooldownUntil.value) {
+    if (newText.length <= lastInputText.value.length) {
+      // 原生层已同步到我们的短文本（或用户在短文本基础上又删了一字），解除冷静期
+      mentionDeleteCooldownUntil.value = 0;
+      // 继续走下面的正常逻辑处理本次事件
+    } else {
+      // 长按仍在原生层旧视角上删字符，丢弃事件
+      return;
+    }
+  }
+
+  // 1. 整体删除：群会话且支持 @ 时，删除 mention 段尾部 1 字符时一次性删整段
+  if (isAtSupported.value) {
+    const deleted = tryDeleteWholeMention(
+      lastInputText.value,
+      newText,
+      lastInputCursor.value,
+      mentions.value
+    );
+    if (deleted) {
+      inputText.value = deleted.newText;
+      lastInputText.value = deleted.newText;
+      lastInputCursor.value = deleted.newCursor;
+      mentions.value = scanMentions(deleted.newText, selectedMembers.value);
+      // 进入冷静期：500ms 内丢弃所有 input 事件，避免长按删除把已删的段写回来或破坏下一段
+      mentionDeleteCooldownUntil.value = Date.now() + 500;
+      // 延迟设 cursor 让 textarea 重排完成；不释放为 -1（nvue 上 -1 会被识别为位置 0）
+      setTimeout(() => {
+        cursorPosition.value = deleted.newCursor;
+      }, 30);
+      return;
+    }
+  }
+
+  // 2. 派生重建 mentions（手改文本破坏 @ 段时自动剥离）
+  if (isAtSupported.value) {
+    mentions.value = scanMentions(newText, selectedMembers.value);
+  }
+
+  // 3. 检测刚输入了 @ 字符 → 跳转到选人页
+  if (
+    isAtSupported.value &&
+    newText.length === lastInputText.value.length + 1 &&
+    newCursor > 0 &&
+    newText[newCursor - 1] === '@'
+  ) {
+    mentionAnchor.value = newCursor - 1;
+    navigateToAtUserPicker();
+  }
+
+  lastInputText.value = newText;
+  lastInputCursor.value = newCursor;
+  // 释放受控光标：把 cursorPosition 同步到系统光标，避免下次输入光标被旧值锁定
+  if (cursorPosition.value !== -1 && cursorPosition.value !== newCursor) {
+    cursorPosition.value = newCursor;
+  }
+};
+
+// 跳转到 @ 选人页
+const navigateToAtUserPicker = (): void => {
+  // 上限校验：当前已 @ 的不重复用户数已达上限则提示
+  const existingUserIDs = new Set(mentions.value.map(m => m.userID));
+  if (existingUserIDs.size >= MAX_AT_USER_COUNT) {
+    uni.showToast({
+      title: `最多 @ ${MAX_AT_USER_COUNT} 人`,
+      icon: 'none',
+    });
+    return;
+  }
+
+  const collapseTimer = setTimeout(()=> {
+    switchMode('NONE');
+    clearTimeout(collapseTimer);
+  }, 100);
+
+  // 标记：返回时由 onShow 钩子恢复 focus
+  pendingFocusAfterAtPicker = true;
+
+  // 跳转到统一的 UserPicker 承载页（宿主工程注册的页面）
+  // Vue2/Vue3 nvue 统一通过 uni.$emit/uni.$once 全局事件总线接收回传
+  // （Vue2 nvue 上 navigateTo events 不可用，统一方案避免双轨）
+  uni.$off('onSelectGroupMember')
+  uni.$once('onSelectGroupMember', (payload: { selectedUsers: Array<{ userID: string; nickname?: string }> }) => {
+    if (!payload || !payload.selectedUsers || payload.selectedUsers.length === 0) return;
+    const picked = payload.selectedUsers[0];
+    const displayName = picked.userID === AT_ALL_TAG ? '所有人' : (picked.nickname || picked.userID);
+    applyMentionSelection(displayName, picked.userID);
+  });
+  uni.navigateTo({
+    url: `/pages/scenes/chat/userPicker/userPicker?businessType=${UserPickerType.SELECT_GROUP_AT_USER}&conversationID=${props.conversationID}`,
+    fail: () => {
+      uni.$off('onSelectGroupMember')
+      pendingFocusAfterAtPicker = false;
+    },
+  });
+};
+
+// 把选中成员回填到文本里
+const applyMentionSelection = (displayName: string, userID: string): void => {
+  if (mentionAnchor.value < 0) return;
+  const result = insertMention(
+    inputText.value,
+    mentionAnchor.value,
+    0,  // keywordLen 永远为 0 —— 用户只输入了 @ 就跳转
+    displayName
+  );
+  selectedMembers.value.set(displayName, userID);
+  inputText.value = result.newText;
+  lastInputText.value = result.newText;
+  lastInputCursor.value = result.newCursor;
+  mentions.value = scanMentions(result.newText, selectedMembers.value);
+  mentionAnchor.value = -1;
+  // 注意：不要释放为 -1，nvue 上 cursorPosition = -1 会被识别为位置 0 导致光标跳到字符串首
+  // 延迟 30ms 让 v-model 同步完成后再设光标
+  setTimeout(() => {
+    cursorPosition.value = result.newCursor;
+  }, 30);
+};
+
+// 发送消息
+const handleSend = (): void => {
+  const rawText: string = inputText.value.trim();
+  if (!rawText) return;
+
+  // 输入框里 emoji 显示为中文名（如 [微笑]），发送前反查回 [TUIEmoji_Smile] key，
+  // 接收端按 key 渲染 PNG，跨端表情视觉一致
+  const text: string = transformEmojiNameToKey(rawText);
+
+  const messagePayload = { text };
+
+  // 派生 atUserList（去重）；仅在支持 @ 的会话才附带
+  const atUserList = isAtSupported.value && mentions.value.length > 0
+    ? Array.from(new Set(mentions.value.map(m => m.userID)))
+    : undefined;
+
+  const payload: SendMessagePayload = { type: 'text', text };
+  const option: SendMessageOption = {};
+  if (atUserList && atUserList.length > 0) option.atUserList = atUserList;
+  const offlinePush = buildOfflinePushInfo(props.setOfflinePushInfo, {
+    messageType: MessageType.TEXT,
+    messagePayload,
+    conversationID: props.conversationID,
+  });
+  if (offlinePush) option.offlinePushInfo = offlinePush;
+
+  messageInputState?.sendMessage(payload, option).then(() => {
+    // success
+  }).catch((error) => {
+    const toastText = resolveSendError(error);
+    uni.showToast({
+      title: toastText,
+      icon: 'none',
+    });
+  });
+  emit('send', text);
+  inputText.value = '';
+  // 清理 mention 上下文
+  mentions.value = [];
+  selectedMembers.value = new Map();
+  mentionAnchor.value = -1;
+  lastInputText.value = '';
+  lastInputCursor.value = 0;
+};
+
+/**
+ * 录音浮层的事件吞噬处理函数
+ * 配合 @tap.stop / @touchstart.stop 等修饰符使用，阻止事件冒泡到下层元素
+ * 仅仅是占位（noop）—— nvue 编译器不接受空字符串 handler
+ */
+const onOverlayNoop = (): void => {
+  // 空实现：阻止浮层下的元素被误触
+};
+
+/**
+ * 检查并申请麦克风权限
+ * - iOS: Undetermined → 弹系统原生弹窗; Denied → 弹去设置引导; Granted → 放行
+ * - Android: 直接调 requestAndroidPermission 触发系统弹窗
+ * @returns true=已授权可继续, false=被拒绝
+ */
+const ensureMicPermission = async (): Promise<boolean> => {
+  const platform = uni.getSystemInfoSync().platform;
+  if (platform === 'android') {
+    // Android: 系统弹窗请求权限
+    const result = await permission.requestAndroidPermission('android.permission.RECORD_AUDIO');
+    if (result !== 1) {
+      // 被拒绝或永久拒绝，弹去设置引导
+      await showPermissionDialog(['麦克风']);
+      return false;
+    }
+    return true;
+  } else if (platform === 'ios') {
+    // iOS: 复用 callPermission 的 mediaType=0(仅麦克风) 流程
+    const granted = await requestCallPermissions(0);
+    if (!granted) {
+      await showPermissionDialog(['麦克风']);
+      return false;
+    }
+    return true;
+  }
+  // 其他平台（小程序/H5）直接放行，由底层 recorderManager 处理
+  return true;
+};
+
+// 语音/键盘切换按钮点击
+const handleMicTap = async (): Promise<void> => {
+  isFocused.value = false;
+  if (inputState.value === 'VOICE') {
+    // VOICE → TEXT: 点击键盘图标
+    switchMode('TEXT');
+  } else {
+    // * → VOICE: 先检查麦克风权限
+    const granted = await ensureMicPermission();
+    if (!granted) {
+      return;
+    }
+    switchMode('VOICE');
+  }
+};
+
+// 表情按钮点击
+const handleFaceTap = throttle(() => {
+  if (inputState.value === 'TEXT') {
+    if (Date.now() - lastOperationTime < OPERATION_TIME_THRESHOLD + 200) {
+      return;
+    }
+  }
+  if (Date.now() - lastOperationTime < OPERATION_TIME_THRESHOLD) {
+    return;
+  }
+  lastOperationTime = Date.now();
+  isFocused.value = false;
+  if (inputState.value === 'EMOJI') {
+    // EMOJI → NONE: 再次点击收起（或可改为 → TEXT）
+    switchMode('TEXT');
+  } else {
+    // * → EMOJI
+    switchMode('EMOJI');
+  }
+}, OPERATION_TIME_THRESHOLD, { leading: true, trailing: false });
+
+// 更多按钮点击
+const handleMoreTap = throttle(() => {
+  if (inputState.value === 'TEXT') {
+    if (Date.now() - lastOperationTime < OPERATION_TIME_THRESHOLD + 200) {
+      return;
+    }
+  }
+  if (Date.now() - lastOperationTime < OPERATION_TIME_THRESHOLD) {
+    return;
+  }
+  lastOperationTime = Date.now();
+	isFocused.value = false;
+  if (hasContent.value) {
+    // 有内容时是发送按钮，由 handleSend 处理
+    return;
+  }
+
+  if (inputState.value === 'TOOLS') {
+    // TOOLS → NONE: 再次点击收起（或可改为 → TEXT）
+    switchMode('TEXT');
+  } else {
+    // * → TOOLS
+    switchMode('TOOLS');
+  }
+}, 250, { leading: true, trailing: false });
+
+// 表情选择
+// nvue textarea 不支持内嵌图片，用中文名（如 [微笑]）作为输入框可视形态；
+// 发送时由 handleSend 用 transformEmojiNameToKey 反查回 [TUIEmoji_Xxx] key，再发出去
+const handleEmojiSelect = (emoji: EmojiItem | string): void => {
+  textareaRef.value?.getSelectionRange((res: { selectionStart: number, selectionEnd: number }) => {
+    const {
+      selectionStart,
+      selectionEnd,
+    } = res;
+
+    let insertText = '';
+    if (typeof emoji === 'string') {
+      insertText = emoji;
+    } else {
+      // 优先用 name（如 [微笑]）；无 name 则降级用 key（如 [TUIEmoji_Smile]）
+      insertText = (emoji.name as string) || emoji.key || '';
+    }
+    if (!insertText) return;
+
+    inputText.value = inputText.value.slice(0, selectionStart) + insertText + inputText.value.slice(selectionEnd);
+    cursorPosition.value = selectionStart + insertText.length;
+    // 注意：不要释放为 -1，nvue 上 cursorPosition = -1 会被识别为位置 0 导致光标跳到字符串首
+    // 同步 lastInputText/lastInputCursor，避免 @ 检测/整段删除等逻辑误判文本变化
+    lastInputText.value = inputText.value;
+    lastInputCursor.value = cursorPosition.value;
+  });
+};
+
+// 表情删除
+const handleEmojiDelete = (): void => {
+  if (inputText.value.length > 0) {
+    inputText.value = inputText.value.slice(0, -1);
+  }
+};
+
+
+// ==================== 录音管理 ====================
+let recorderManager: UniApp.RecorderManager | null = null;
+let voiceTempFilePath: string = '';
+const MAX_RECORD_DURATION = 60000; // 最大录音时长 60秒
+const MIN_RECORD_DURATION = 1000; // 最小录音时长 1秒
+let recordStartTime: number = 0; // 录音开始时间
+
+/**
+ * 将 UniApp 临时文件路径转换为 SDK 可读取的绝对路径
+ * - 移除 file:// 前缀
+ * - 将相对路径（如 _doc/）转换为绝对路径
+ */
+const convertToAbsolutePath = (path: string): string => {
+  if (!path) return path;
+  
+  // 移除 file:// 或 file:/// 前缀
+  let result = path;
+  if (result.startsWith('file:///')) {
+    result = result.substring(7);
+  } else if (result.startsWith('file://')) {
+    result = result.substring(7);
+  }
+  
+  // 处理 UniApp 相对路径（如 _doc/audio/xxx.mp3）
+  // 使用 plus.io.convertLocalFileSystemURL 转换为绝对路径
+  // #ifdef APP-PLUS
+  if (result.startsWith('_')) {
+    try {
+      result = plus.io.convertLocalFileSystemURL(path);
+      // 转换后可能带 file:// 前缀，再次移除
+      if (result.startsWith('file:///')) {
+        result = result.substring(7);
+      } else if (result.startsWith('file://')) {
+        result = result.substring(7);
+      }
+    } catch (e) {
+      console.error('[MessageInput] convertLocalFileSystemURL error:', e);
+    }
+  }
+  // #endif
+  
+  return result;
+};
+
+const initRecorderManager = (): void => {
+  if (recorderManager) return;
+  
+  recorderManager = uni.getRecorderManager();
+  
+  recorderManager.onStart(() => {
+    recordStartTime = Date.now();
+    recordingDuration.value = 0;
+    // 启动计时器
+    recordingTimer = setInterval(() => {
+      recordingDuration.value++;
+      // 刚进入倒计时阶段：停止波形动画（波形条 DOM 会被 v-else 卸载）+ 重置 cancel 态
+      if (recordingDuration.value === COUNTDOWN_START_AT) {
+        stopWaveAnimation();
+        if (isCancelArea.value) {
+          isCancelArea.value = false;
+        }
+      }
+      // 达到最大时长自动停止
+      if (recordingDuration.value >= 60) {
+        // 标记为"达到最大时长的自动停止"，onStop 内将忽略 isCancelArea，强制发送
+        isAutoStopByMaxDuration = true;
+        // 清除手指上滑带来的 cancel 态（此时不允许取消，必须发送）
+        isCancelArea.value = false;
+        handleVoiceTouchEnd();
+      }
+    }, 1000);
+    // 启动波形动画
+    nextTick(() => {
+      startWaveAnimation();
+    });
+  });
+  
+  recorderManager.onStop((res: RecorderStopResult) => {
+    voiceTempFilePath = res.tempFilePath;
+    
+    // 清除计时器
+    if (recordingTimer) {
+      clearInterval(recordingTimer);
+      recordingTimer = null;
+    }
+    
+    const recordDuration = Date.now() - recordStartTime;
+    
+    /**
+     * 计算实际发送的语音时长（秒）
+     * - clamp 上限为 MAX_RECORD_DURATION/1000 = 60，避免 setInterval/onStart 回调漂移
+     *   导致 recordDuration 超过 60000ms 时 Math.ceil 得到 61
+     * - clamp 下限为 1，避免极端情况返回 0
+     * - 用 Math.round 更符合直觉（59.6s → 60s, 59.4s → 59s）
+     */
+    const calcDurationSeconds = (ms: number): number => {
+      const maxSec = Math.floor(MAX_RECORD_DURATION / 1000); // 60
+      const sec = Math.round(ms / 1000);
+      if (sec < 1) return 1;
+      if (sec > maxSec) return maxSec;
+      return sec;
+    };
+    
+    // 达到最大时长自动停止：强制发送，忽略 isCancelArea 和时长过短检查
+    if (isAutoStopByMaxDuration) {
+      if (voiceTempFilePath && messageInputState) {
+        // 自动停止场景直接使用最大时长，不受回调漂移影响
+        sendVoiceMessage(voiceTempFilePath, Math.floor(MAX_RECORD_DURATION / 1000));
+      }
+      resetRecordingState();
+      return;
+    }
+    
+    // 如果是取消状态，不发送
+    if (isCancelArea.value) {
+      resetRecordingState();
+      return;
+    }
+    
+    if (recordDuration < MIN_RECORD_DURATION) {
+      uni.showToast({
+        title: '录音时间太短',
+        icon: 'none',
+      });
+      resetRecordingState();
+      return;
+    }
+    
+    // 发送语音消息
+    if (voiceTempFilePath && messageInputState) {
+      sendVoiceMessage(voiceTempFilePath, calcDurationSeconds(recordDuration));
+    }
+    
+    resetRecordingState();
+  });
+  
+  recorderManager.onError((err: RecorderError) => {
+    console.error('[MessageInput] Recording error:', err);
+    // 判断是否权限问题，给出更友好的提示
+    const errMsg = err?.errMsg || '';
+    const isPermissionError = /permission|denied|auth/i.test(errMsg);
+    if (isPermissionError) {
+      // 权限被拒，弹去设置引导
+      showPermissionDialog(['麦克风']);
+    } else {
+      uni.showToast({
+        title: '录音失败',
+        icon: 'none',
+      });
+    }
+    resetRecordingState();
+  });
+};
+
+// 重置录音状态
+const resetRecordingState = (): void => {
+  isRecording.value = false;
+  isCancelArea.value = false;
+  recordingDuration.value = 0;
+  voiceTempFilePath = '';
+  isAutoStopByMaxDuration = false;
+  if (recordingTimer) {
+    clearInterval(recordingTimer);
+    recordingTimer = null;
+  }
+  // 停止波形动画
+  stopWaveAnimation();
+};
+
+// 发送语音消息
+const sendVoiceMessage = (filePath: string, duration: number): void => {
+  if (!messageInputState) return;
+  
+  // 将临时路径转换为 SDK 可读取的绝对路径
+  const absolutePath = convertToAbsolutePath(filePath);
+  
+  // 构建语音消息
+  const messageBody = {
+    soundPath: absolutePath,
+    soundDuration: duration,
+  };
+  const offlinePushInfo = buildOfflinePushInfo(props.setOfflinePushInfo, {
+    messageType: MessageType.AUDIO,
+    messageBody,
+    conversationID: props.conversationID,
+  });
+  
+  const audioPayload: SendMessagePayload = {
+    type: 'audio',
+    audioFilePath: absolutePath,
+    duration,
+  };
+  const audioOption: SendMessageOption = {};
+  if (offlinePushInfo) audioOption.offlinePushInfo = offlinePushInfo;
+
+  messageInputState.sendMessage(audioPayload, audioOption).then(() => {
+    emit('sendVoice', filePath);
+  }).catch((error) => {
+    console.error('[MessageInput] Voice message send failed:', error);
+    const toastText = resolveSendError(error);
+    uni.showToast({
+      title: toastText,
+      icon: 'none',
+    });
+  });
+};
+
+// 语音录制 - 开始
+const handleVoiceTouchStart = async (e: TouchEventDetail): Promise<void> => {
+  // 通话中（呼叫中 / 通话中）禁止录制语音消息，与 ToolsPanel.startCall 判定一致
+  if (isInCallNow()) {
+    uni.showToast({
+      title: '您正在通话中，无法录制语音消息',
+      icon: 'none',
+      duration: 2000,
+    });
+    return;
+  }
+
+  // 兜底检查麦克风权限（防止用户在切到 VOICE 模式后从系统设置里撤销了授权）
+  const granted = await ensureMicPermission();
+  if (!granted) {
+    return;
+  }
+  
+  // 录音前停止所有正在播放的语音消息（避免边播边录的冲突）
+  // 1. 销毁全局 innerAudioContext 实例
+  stopGlobalAudioPlayer();
+  // 2. 广播 audioPlayerStart 让所有 AudioMessage 组件重置 UI 状态（复用语音消息的全局通知机制）
+  uni.$emit('audioPlayerStart', { messageId: RECORDING_PSEUDO_ID });
+  
+  initRecorderManager();
+  
+  isRecording.value = true;
+  isCancelArea.value = false;
+  isAutoStopByMaxDuration = false;
+  recordStartY.value = e.touches[0].pageY;
+  voiceTempFilePath = '';
+  
+  recorderManager?.start({
+    duration: MAX_RECORD_DURATION,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    encodeBitRate: 48000,
+    format: 'mp3',
+  });
+};
+
+// 语音录制 - 移动
+const handleVoiceTouchMove = (e: TouchEventDetail): void => {
+  if (!isRecording.value) return;
+  
+  // 进入最后 10 秒倒计时后禁止取消（松手也会自动发送），避免 UI 和最终行为不一致
+  if (recordingDuration.value >= COUNTDOWN_START_AT) {
+    isCancelArea.value = false;
+    return;
+  }
+  
+  const currentY: number = e.touches[0].pageY;
+  const deltaY: number = recordStartY.value - currentY;
+  
+  isCancelArea.value = deltaY > CANCEL_THRESHOLD;
+};
+
+// 语音录制 - 结束
+const handleVoiceTouchEnd = (): void => {
+  if (!isRecording.value) return;
+
+  recorderManager?.stop();
+};
+
+// 波形条的相位偏移，两组各6个，相同模式
+const wavePhaseOffsets = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 0, 0.5, 1.0, 1.5, 2.0, 2.5];
+
+// 波形动画 - 启动
+const startWaveAnimation = (): void => {
+  if (waveAnimationTimer) return;
+  
+  // 先立即设置初始缩放值，避免闪烁
+  waveBarRefs.value.forEach((barRef, index) => {
+    if (barRef) {
+      const initialScale = waveBarConfigs[index].baseHeight * 0.5; // 初始中等幅度
+      animation.transition(
+        barRef,
+        {
+          styles: { transform: `scaleY(${initialScale})` },
+          duration: 0,
+          timingFunction: 'linear',
+        }
+      );
+    }
+  });
+  
+  waveAnimationPhase = 0;
+  waveAnimationTimer = setInterval(() => {
+    waveAnimationPhase += 0.25;
+    
+    waveBarRefs.value.forEach((barRef, index) => {
+      if (barRef) {
+        // 使用正弦函数计算波动幅度 (0.15 ~ 0.85 的变化范围)
+        const waveAmplitude = 0.15 + 0.85 * Math.abs(Math.sin(waveAnimationPhase + wavePhaseOffsets[index]));
+        // 结合基础高度和波动幅度
+        const scale = waveBarConfigs[index].baseHeight * waveAmplitude;
+        
+        animation.transition(
+          barRef,
+          {
+            styles: { transform: `scaleY(${scale})` },
+            duration: 100,
+            timingFunction: 'ease-in-out',
+          }
+        );
+      }
+    });
+  }, 100);
+};
+
+// 波形动画 - 停止
+const stopWaveAnimation = (): void => {
+  if (waveAnimationTimer) {
+    clearInterval(waveAnimationTimer);
+    waveAnimationTimer = null;
+  }
+  
+  // 重置所有波形条
+  waveBarRefs.value.forEach((barRef) => {
+    if (barRef) {
+      animation.transition(
+        barRef,
+        {
+          styles: { transform: 'scaleY(1)' },
+          duration: 100,
+          timingFunction: 'ease-out',
+        }
+      );
+    }
+  });
+};
+
+// ==================== Expose ====================
+defineExpose<MessageInputExpose>({
+  collapse: () => {
+    // VOICE 状态下点击消息列表空白处不应该切到 NONE，保持语音按钮可见
+    if (inputState.value === 'VOICE') return;
+    switchMode('NONE');
+  },
+  focus: () => switchMode('TEXT'),
+  blur: () => {
+    textareaRef.value?.blur();
+  },
+  getState: () => inputState.value,
+});
+
+// ==================== 撤回消息 - 重新编辑（内部自洽） ====================
+/**
+ * 监听 RecalledMessage 发出的全局事件 'atomicx-reEdit'
+ * 通过 conversationID 隔离作用域，组件内部完成原文回填，无需业务层粘合
+ */
+const onReEdit = (data: { conversationID: string; text: string }): void => {
+  if (!data || data.conversationID !== props.conversationID) return;
+  switchMode('NONE');
+  inputText.value = data.text;
+  mentions.value = [];
+  selectedMembers.value = new Map();
+  mentionAnchor.value = -1;
+};
+</script>
+
+<style scoped>
+.message-input {
+  position: fixed;
+  bottom: -700rpx;
+  left: 0;
+  right: 0;
+  background-color: #ffffff;
+}
+
+/* 录音状态浮层样式 */
+.message-input__recording-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 9999;
+  background-image: linear-gradient(to bottom, transparent, #F9FAFC);
+}
+
+.message-input__recording-content {
+  position: relative;
+  align-items: center;
+}
+
+/* 底部声波指示区域 */
+.message-input__recording-bottom {
+  align-items: center;
+  padding: 164rpx 0 94rpx;
+  opacity: 0.5;
+}
+
+.message-input__recording-bottom-bg {
+  position: absolute;
+  width: 750rpx;
+  height: 360rpx;
+}
+
+.message-input__recording-icon {
+  width: 48rpx;
+  height: 60rpx;
+  transform: rotate(180deg);
+}
+
+/* 录音指示器容器 */
+.message-input__recording-indicator-wrapper {
+  align-items: center;
+  padding-bottom: 7rpx;
+  margin-bottom: 32rpx;
+}
+
+/* 录音指示器 - 圆角矩形 */
+.message-input__recording-indicator {
+  width: 320rpx;
+  height: 136rpx;
+  background-color: #147AFF;
+  border-radius: 20rpx;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+
+.message-input__recording-indicator--cancel {
+  background-color: #FA5151;
+}
+
+/* 小三角指向 - 通过旋转正方形实现 */
+.message-input__recording-arrow {
+  width: 24rpx;
+  height: 24rpx;
+  background-color: #147AFF;
+  transform: rotate(45deg);
+  margin-top: -17rpx;
+}
+
+.message-input__recording-arrow--cancel {
+  background-color: #FA5151;
+}
+
+/* 波形条组 */
+.message-input__waveform-group {
+  flex-direction: row;
+  align-items: center;
+  height: 60rpx;
+}
+
+/* 最后 10 秒倒计时文字 - 替换波形条的位置显示 */
+.message-input__recording-countdown-text {
+  font-size: 32rpx;
+  color: #FFFFFF;
+  font-weight: 500;
+  text-align: center;
+  line-height: 60rpx;
+  height: 60rpx;
+}
+
+/* 单个波形条 - 基础样式 */
+.message-input__wave-bar {
+  width: 4rpx;
+  background-color: #FFFFFF;
+  border-radius: 2rpx;
+  margin-left: 4rpx;
+  margin-right: 4rpx;
+  transform-origin: center center;
+}
+
+/* 波形条高度变体 - 统一高度，通过 scaleY 控制 */
+.message-input__wave-bar--xs {
+  height: 56rpx;
+  transform: scaleY(0.1);
+}
+
+.message-input__wave-bar--sm {
+  height: 56rpx;
+  transform: scaleY(0.175);
+}
+
+.message-input__wave-bar--md {
+  height: 56rpx;
+  transform: scaleY(0.25);
+}
+
+.message-input__wave-bar--lg {
+  height: 56rpx;
+  transform: scaleY(0.375);
+}
+
+.message-input__wave-bar--xl {
+  height: 56rpx;
+  transform: scaleY(0.5);
+}
+
+/* 提示文字 */
+.message-input__recording-text {
+  font-size: 28rpx;
+  color: #000000;
+  margin-bottom: 48rpx;
+}
+
+/* 取消按钮 */
+.message-input__recording-cancel-btn {
+  justify-content: center;
+  align-items: center;
+  opacity: 0.5;
+}
+
+.message-input__recording-cancel-btn--active {
+  opacity: 1;
+}
+
+/* 取消图标 */
+.message-input__recording-cancel-icon {
+  width: 80rpx;
+  height: 80rpx;
+}
+
+.message-input__toolbar {
+  flex-direction: row;
+  background-color: #ffffff;
+  padding: 16rpx 32rpx;
+  border-top-width: 1rpx;
+  border-top-style: solid;
+  border-top-color: #F0F2F7;
+  align-items: center;
+}
+
+.message-input__mask {
+  border-top-width: 1rpx;
+  border-top-style: solid;
+  border-top-color: #F0F2F7;
+  background-color: #fff;
+  height: 700rpx;
+  position: relative;
+}
+
+.message-input__btn {
+  margin-left: 20rpx;
+  height: 56rpx;
+  /* 宽度需要自适应 */
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+}
+
+.message-input__btn:active {
+  background-color: #F0F2F7;
+}
+
+.message-input__btn--first {
+  margin-left: 0;
+  margin-right: 20rpx;
+}
+
+.message-input__icon {
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.message-input__icon-text {
+  font-size: 40rpx;
+}
+
+.message-input__box {
+  flex: 1;
+  /* min-height: 72rpx; */
+  background-color: #F0F2F7;
+  border-radius: 8rpx;
+}
+
+.message-input__field {
+  min-height: 68rpx;
+  line-height: 45rpx;
+  padding-top: 12rpx;
+  padding-bottom: 11rpx;
+  font-size: 32rpx;
+  background-color: #F0F2F7;
+  max-height: 340rpx;
+  padding-left: 32rpx;
+  /* 如果出现右侧padding视觉比左侧大 是因为中文文字宽度导致换行 */
+  padding-right: 32rpx;
+  color: #000;
+  border-radius: 8rpx;
+}
+
+.message-input__placeholder {
+  color: #999999;
+}
+
+.message-input__record-trigger {
+  justify-content: center;
+  align-items: center;
+  min-height: 68rpx;
+  padding-top: 12rpx;
+  padding-bottom: 11rpx;
+  background-color: #F0F2F7;
+  border-radius: 8rpx;
+}
+
+.message-input__record-trigger-text {
+  font-size: 32rpx;
+  color: #000000;
+}
+
+.message-input__send-btn {
+  flex: 1;
+  background-color: #07c160;
+  border-radius: 8rpx;
+  padding: 8rpx 24rpx;
+  justify-content: center;
+  align-items: center;
+  height: 56rpx;
+}
+
+.message-input__send-btn-text {
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+.message-input__panel {
+  background-color: #fff;
+  overflow: hidden;
+}
+
+/* Step 2 测试：用包装层实现绝对定位 */
+.message-input__panel-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.message-input__panel-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.message-input__safe-area {
+  background-color: #ffffff;
+}
+</style>

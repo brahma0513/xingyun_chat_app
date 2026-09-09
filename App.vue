@@ -25,6 +25,7 @@
 	import api from "./utils/api"
 	import config from "./utils/config"
 	import Store from '@/store'
+	import { startIMLogin, syncIMLogin } from '@/utils/im'
 	// #ifdef APP-PLUS
 	import APPUpdate from '@/uni_modules/xingdian/APPUpdate/js_sdk/appUpdate';
 	// #endif
@@ -66,6 +67,7 @@
 			// #endif
 
 			this.get_user_client();
+			startIMLogin();
 			this.get_customer_info();
 			this.getCustomerBaseSet();
 			this.getUniappSetting();
@@ -106,6 +108,7 @@
 
 		},
 		onShow: function() {
+			syncIMLogin();
 			this.asyncCheckIsOnline();
 		},
 		onHide: function() {},

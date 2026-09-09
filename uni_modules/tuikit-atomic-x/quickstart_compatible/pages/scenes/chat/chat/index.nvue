@@ -1,0 +1,182 @@
+<template>
+  <view class="page-container">
+    <CustomNavbar
+      position="fixed"
+      :title="navigationTitle"
+      :showBack="true"
+      :showMenu="true"
+      @back="onNavBack"
+      @menuSelect="onNavMenuSelect"
+    />
+    
+    <view
+      class="message-list-container"
+      :style="{ height: messageListHeight + 'px' }"
+      @tap="closeSoftKeyboard"
+    >
+      <MessageList
+        v-if="conversationID"
+        :conversationID="conversationID"
+        :locateMessage="locateMessage"
+        :inputToolbarHeight="inputToolbarHeight"
+        :inputPanelHeight="inputPanelHeight"
+        @onMessageListTap="closeSoftKeyboard"
+      />
+    </view>
+    
+    <MessageInput
+      v-if="conversationID"
+      ref="messageInputRef"
+      :conversationID="conversationID"
+      :setOfflinePushInfo="setOfflinePushInfo"
+      @heightChange="onMessageInputHeightChange"
+    />
+  </view>
+</template>
+
+<script>
+import MessageList from '@/uni_modules/tuikit-atomic-x/components/MessageList/MessageList.nvue'
+import MessageInput from '@/uni_modules/tuikit-atomic-x/components/MessageInput/MessageInput.nvue'
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue'
+import { useConversationListState } from '@/uni_modules/tuikit-atomic-x/state/ConversationListState'
+import { useGroupState } from '@/uni_modules/tuikit-atomic-x/state/GroupState'
+import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState'
+import { MessageType } from '@/uni_modules/tuikit-atomic-x/types/message'
+
+export default {
+  components: {
+    MessageList,
+    MessageInput,
+    CustomNavbar
+  },
+  data() {
+    var groupState = useGroupState()
+    var convState = useConversationListState('chat')
+    var loginState = useLoginState()
+    var systemInfo = uni.getSystemInfoSync()
+    return {
+      conversationID: '',
+      locateMessage: null,
+      isInGroup: false,
+      inputToolbarHeight: 0,
+      inputPanelHeight: 0,
+      groupState: groupState,
+      convState: convState,
+      loginState: loginState,
+      screenHeight: systemInfo.screenHeight || 750
+    }
+  },
+  computed: {
+    isC2CConversation() {
+      return this.conversationID.startsWith('c2c_')
+    },
+    currentConversation() {
+      var cid = this.conversationID
+      var list = (this.convState && this.convState.state) ? this.convState.state.conversationList : []
+      return (list || []).find(function(conv) { return conv.conversationID === cid })
+    },
+    navigationTitle() {
+      return (this.currentConversation && this.currentConversation.title) || '聊天'
+    },
+    messageListHeight() {
+      return this.screenHeight - this.inputToolbarHeight - this.inputPanelHeight
+    }
+  },
+  onLoad(options) {
+    if (!options.conversationID) {
+      console.error('未接收到 conversationID 参数')
+      return
+    }
+    this.conversationID = options.conversationID
+    this.convState.getConversationInfo(this.conversationID)
+    this.groupState.loadJoinedGroups()
+    if (uni.$locateMessage) {
+      this.locateMessage = uni.$locateMessage
+      uni.$locateMessage = null
+    }
+  },
+  onShow() {
+    this.convState.getConversationInfo(this.conversationID)
+  },
+  methods: {
+    onNavBack() {
+      uni.navigateBack()
+    },
+    onNavMenuSelect() {
+      if (!this.isC2CConversation) {
+        var convID = this.conversationID
+        this.isInGroup = this.groupState.joinedGroupList.value.some(function(group) {
+          return group.groupID === convID.replace('group_', '')
+        })
+        if (!this.isInGroup) {
+          uni.showToast({ title: '您已不在群内，无法进行此操作', icon: 'none' })
+          return
+        }
+      }
+      uni.navigateTo({
+        url: '/pages/scenes/chat/chatSetting/index?conversationID=' + this.conversationID + '&showType=0'
+      })
+    },
+    onMessageInputHeightChange(payload) {
+      this.inputToolbarHeight = payload.inputToolbarHeight
+      this.inputPanelHeight = payload.inputPanelHeight
+    },
+    closeSoftKeyboard() {
+      var ref = this.$refs.messageInputRef
+      if (ref && ref.collapse) ref.collapse()
+    },
+    setOfflinePushInfo(ctx) {
+      // 群组会话用群名；C2C 会话用当前登录用户的昵称（消息发送者本人），fallback userID
+      var loginInfo = (this.loginState && this.loginState.loginUserInfo && this.loginState.loginUserInfo.value) || null
+      var title = this.isC2CConversation
+        ? ((loginInfo && (loginInfo.nickname || loginInfo.userID)) || '新消息')
+        : ((this.currentConversation && this.currentConversation.title) || '新消息')
+      var description = '[新消息]'
+      switch (ctx.messageType) {
+        case MessageType.TEXT:
+          description = ctx.messagePayload.text || '[文本消息]'
+          break
+        case MessageType.IMAGE:
+          description = '[图片]'
+          break
+        case MessageType.VIDEO:
+          description = '[视频]'
+          break
+        case MessageType.AUDIO:
+          description = '[语音]'
+          break
+        case MessageType.FILE:
+          description = '[文件]'
+          break
+        case MessageType.CUSTOM:
+          return null
+        default:
+          return null
+      }
+      return {
+        title: title,
+        description: description,
+        extensionInfo: {
+          ext: JSON.stringify({
+            conversationID: ctx.conversationID,
+            messageType: ctx.messageType
+          })
+        }
+      }
+    }
+  }
+}
+</script>
+
+<style>
+.page-container {
+  flex: 1;
+  flex-direction: column;
+  background-color: #F9FAFC;
+}
+
+.message-list-container {
+  flex-direction: column;
+  background-color: #F9FAFC;
+}
+</style>

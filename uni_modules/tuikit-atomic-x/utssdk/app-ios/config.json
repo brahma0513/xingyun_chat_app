@@ -1,0 +1,47 @@
+{
+  "frameworks": [
+    "CoreTelephony.framework"
+  ],
+  "deploymentTarget": "14",
+  "dependencies-pods": [{
+      "name": "SVGAPlayer",
+      "version": "2.5.7",
+      "source": "https://cdn.cocoapods.org/"
+    },
+    {
+      "name": "Protobuf",
+      "version": "3.22.1",
+      "source": "https://cdn.cocoapods.org/"
+    },
+    {
+      "name": "TXIMSDK_Plus_iOS_XCFramework",
+      "version": "9.0.7661"
+    },
+    {
+      "name": "TXLiteAVSDK_Professional",
+      "version": "13.4.21067"
+    },
+    {
+      "name": "RTCRoomEngine/Professional",
+      "version": "~> 4.3.0"
+    },
+    {
+      "name": "AtomicXCore",
+      "version": "~> 4.3.0"
+    },
+	  {
+	  "name": "AlbumPicker",
+	  "version": "~> 1.0"
+    },
+    {
+      "name": "SnapKit",
+      "version": "5.7.1",
+      "source": "https://cdn.cocoapods.org/"
+    },
+    {
+      "name": "Kingfisher",
+      "version": "7.10.2",
+      "source": "https://cdn.cocoapods.org/"
+    }
+  ]
+}

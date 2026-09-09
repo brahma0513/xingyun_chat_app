@@ -4,3 +4,6 @@
 /package-lock.json
 .DS_Store
 /utils/config_deploy.js
+/node_modules/
+/.trtc-session.yaml
+/.codex/skills/trtc/.venv/

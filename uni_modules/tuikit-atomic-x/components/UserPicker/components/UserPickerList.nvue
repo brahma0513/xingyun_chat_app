@@ -1,0 +1,459 @@
+<template>
+  <view class="user-picker">
+    <!-- 搜索框：enableSearch=false 时不渲染 -->
+    <view v-if="enableSearch" class="user-picker__search">
+      <view class="search__container">
+        <image class="search__icon" :src="searchIconSrc" mode="aspectFit" />
+        <input class="search__input" placeholder="搜索" v-model="searchKeyword" @input="handleSearch" />
+      </view>
+    </view>
+
+    <!-- 用户列表容器 -->
+    <view class="user-picker__content">
+      <!-- 用户列表 -->
+      <scroll-view class="user-list" scroll-y="true" :scroll-into-view="scrollIntoView" @scroll="handleScroll">
+        <!-- 置顶项（如 @所有人）：搜索时不展示，仅浏览态 -->
+        <view v-if="!searchKeyword.trim() && pinnedTopItems && pinnedTopItems.length > 0" class="pinned-group">
+          <view
+            v-for="pinned in pinnedTopItems"
+            :key="pinned.userID"
+            class="user-item user-item--pinned"
+            @tap="handlePinnedSelect(pinned)"
+          >
+            <view v-if="!singleSelect" class="user-item__checkbox">
+              <view class="checkbox" :class="{ 'checkbox--checked': isUserSelected(pinned.userID) }">
+                <image v-if="isUserSelected(pinned.userID)" class="checkbox__icon" :src="checkedIconSrc" mode="aspectFit" />
+              </view>
+            </view>
+            <view class="user-item__avatar user-item__avatar--all">
+              <text class="user-item__avatar-text">@</text>
+            </view>
+            <view class="user-item__info">
+              <text class="user__name">{{ pinned.nickname || pinned.userID }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view v-for="group in filteredGroups" :key="group.letter" class="user-group" :id="`group-${group.letter}`">
+          <view class="group__header">
+            <text class="group__letter">{{ group.letter }}</text>
+          </view>
+
+          <view v-for="user in group.users" :key="user.userID" class="user-item" @tap="handleUserSelect(user)">
+            <view v-if="!singleSelect" class="user-item__checkbox">
+              <view class="checkbox" :class="{
+                'checkbox--checked': isUserSelected(user.userID),
+                'checkbox--disabled': isUserDisabled(user.userID)
+              }">
+                <image v-if="isUserSelected(user.userID)" class="checkbox__icon" :src="checkedIconSrc" mode="aspectFit" />
+              </view>
+            </view>
+
+            <view class="user-item__avatar">
+              <image class="avatar__image" :src="user.avatarURL || defaultAvatar" mode="aspectFill" />
+            </view>
+
+            <view class="user-item__info">
+              <text class="user__name">{{ user.nickname || user.userID }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 空态：搜索无结果 / 浏览模式无成员 -->
+        <view v-if="showEmpty" class="empty">
+          <text class="empty__text">{{ emptyText }}</text>
+        </view>
+      </scroll-view>
+
+      <!-- 右侧字母索引 -->
+      <view class="alphabet-index">
+        <view v-for="letter in alphabetList" :key="letter" class="alphabet-item"
+          :class="{ 'alphabet-item--active': currentLetter === letter }" @tap="handleAlphabetTap(letter)">
+          <text class="alphabet__text">{{ letter }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 底部确定按钮：单选模式不渲染 -->
+    <view v-if="!singleSelect" class="user-picker__footer">
+      <view class="selected-users">
+        <view v-for="user in selectedUsers.slice(0, 3)" :key="user.userID" class="selected-user">
+          <image class="selected-user__avatar" :src="user.avatarURL || defaultAvatar" mode="aspectFill" />
+        </view>
+        <view v-if="selectedUsers.length > 3" class="selected-user selected-user--more">
+          <text class="more-text">+{{ selectedUsers.length - 3 }}</text>
+        </view>
+      </view>
+
+      <view class="confirm-button" :class="{ 'confirm-button--disabled': selectedUsers.length === 0 }"
+        @tap="handleConfirm">
+        <text class="confirm-button__text">确定({{ selectedUsers.length }})</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { sortByFirstChar } from '../utils/sortByFirstChar'
+import searchIcon from '../../../static/icon/search.png'
+import checkedIcon from '../../../static/icon/checked.png'
+
+interface User {
+  userID: string;
+  nickname?: string;
+  avatarURL?: string;
+}
+
+interface Props {
+  /** 最大可选人数 */
+  maxCount?: number
+  /** 要渲染的成员列表 */
+  dataSource?: User[]
+  /** 锁定的用户ID，无法被选取 */
+  lockedItems?: string[]
+  /** 页面标题 */
+  title?: string
+  /** 单选模式：点击行立即触发 confirm，不渲染 checkbox 与底部确定按钮 */
+  singleSelect?: boolean
+  /** 置顶特殊项（如 @所有人）；搜索时不展示 */
+  pinnedTopItems?: User[]
+  /** 是否走 hook 服务端搜索：true 时本地不再做关键词过滤，由 hook 自行更新 dataSource */
+  remoteSearch?: boolean
+  /** 是否渲染搜索框（默认 true；false 时隐藏搜索栏，强制浏览模式） */
+  enableSearch?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  maxCount: 500,
+  dataSource: () => [],
+  lockedItems: () => [],
+  title: '选择用户',
+  singleSelect: false,
+  pinnedTopItems: () => [],
+  remoteSearch: false,
+  enableSearch: true
+})
+
+const emit = defineEmits<{
+  back: []
+  confirm: [users: User[]]
+  /** 搜索关键词变化（用于 hook 接管服务端搜索） */
+  searchChange: [keyword: string]
+}>()
+const searchKeyword = ref('')
+const selectedUserIDs = ref<string[]>([])
+const currentLetter = ref('A')
+const scrollIntoView = ref('')
+const defaultAvatar = ref('https://web.sdk.qcloud.com/im/assets/all-in-one/user.png')
+const searchIconSrc = ref(searchIcon)
+const checkedIconSrc = ref(checkedIcon)
+
+watch(searchKeyword, (kw) => {
+  emit('searchChange', kw)
+})
+
+const groupedUsers = computed(() => {
+  const { groupedList } = sortByFirstChar(
+    props.dataSource,
+    (user: User) => user.nickname || user.userID,
+    true
+  )
+
+  const groups: { letter: string; users: User[] }[] = []
+  const letters = Object.keys(groupedList).sort((a, b) => {
+    if (a === '#' && b !== '#') return 1
+    if (b === '#' && a !== '#') return -1
+    return a.localeCompare(b)
+  })
+
+  letters.forEach(letter => {
+    groups.push({ letter, users: groupedList[letter] })
+  })
+
+  return groups
+})
+
+const alphabetList = computed(() => {
+  const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#']
+  return letters.filter(letter => groupedUsers.value.some(group => group.letter === letter))
+})
+
+const filteredGroups = computed(() => {
+  // remoteSearch=true 时本地不再过滤；dataSource 已是 hook 切换后的搜索结果
+  if (props.remoteSearch || !searchKeyword.value.trim()) {
+    return groupedUsers.value
+  }
+
+  const keyword = searchKeyword.value.toLowerCase()
+  return groupedUsers.value.map(group => ({
+    ...group,
+    users: group.users.filter(user => {
+      const name = (user.nickname || user.userID).toLowerCase()
+      return name.includes(keyword)
+    })
+  })).filter(group => group.users.length > 0)
+})
+
+const selectedUsers = computed(() => {
+  return selectedUserIDs.value.map(userID => {
+    return props.dataSource.find(user => user.userID === userID)
+  }).filter(Boolean) as User[]
+})
+
+// 是否处于搜索状态（搜索框有输入）
+const isSearching = computed<boolean>(() => searchKeyword.value.trim().length > 0)
+
+// 当前列表是否真正可见数据为空（用于空态展示）
+const showEmpty = computed<boolean>(() => {
+  if (filteredGroups.value.length > 0) return false
+  // 搜索状态下置顶项不展示，所以只要 groups 空就视为空态
+  if (isSearching.value) return true
+  // 浏览状态：还要看置顶项是否存在；都没有才算"暂无成员"
+  return (props.pinnedTopItems || []).length === 0
+})
+
+const emptyText = computed<string>(() => isSearching.value ? '没有匹配的成员' : '暂无成员')
+
+const isUserSelected = (userID: string) => selectedUserIDs.value.includes(userID)
+const isUserDisabled = (userID: string) => props.lockedItems.includes(userID)
+
+const handleUserSelect = (user: User) => {
+  if (isUserDisabled(user.userID)) return
+
+  // 单选模式：立即触发 confirm
+  if (props.singleSelect) {
+    emit('confirm', [user])
+    return
+  }
+
+  const index = selectedUserIDs.value.indexOf(user.userID)
+  if (index > -1) {
+    selectedUserIDs.value.splice(index, 1)
+  } else {
+    if (selectedUserIDs.value.length >= props.maxCount) {
+      uni.showToast({ title: `最多只能选择${props.maxCount}人`, icon: 'none' })
+      return
+    }
+    selectedUserIDs.value.push(user.userID)
+  }
+}
+
+const handlePinnedSelect = (user: User) => {
+  // 单选直接 confirm；多选当成普通项加入选中列表
+  if (props.singleSelect) {
+    emit('confirm', [user])
+    return
+  }
+  const index = selectedUserIDs.value.indexOf(user.userID)
+  if (index > -1) {
+    selectedUserIDs.value.splice(index, 1)
+  } else {
+    selectedUserIDs.value.push(user.userID)
+  }
+}
+
+const handleSearch = () => {
+  // 搜索逻辑已在 computed/watch 中处理
+}
+
+const handleAlphabetTap = (letter: string) => {
+  currentLetter.value = letter
+  scrollIntoView.value = `group-${letter}`
+}
+
+const handleScroll = (e: any) => {}
+
+const handleConfirm = () => {
+  if (selectedUsers.value.length === 0) return
+  emit('confirm', selectedUsers.value)
+}
+</script>
+
+<style>
+.user-picker { flex: 1; background-color: #F0F2F7; }
+
+.user-picker__search { background-color: #ffffff; padding: 24rpx 32rpx; }
+
+.search__container {
+  height: 80rpx;
+  background-color: #F0F2F7;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 24rpx;
+}
+
+.search__icon { width: 28rpx; height: 28rpx; margin-right: 16rpx; }
+
+.search__input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333333;
+  height: 72rpx;
+  line-height: 72rpx;
+}
+
+.user-picker__content { flex: 1; flex-direction: row; position: relative; }
+
+.user-list { flex: 1; background-color: #ffffff; }
+
+.pinned-group { background-color: #ffffff; }
+
+.user-group { margin-bottom: 24rpx; }
+
+.group__header {
+  height: 60rpx;
+  background-color: #f5f5f5;
+  justify-content: flex-start;
+  padding-left: 32rpx;
+}
+
+.group__letter {
+  font-family: PingFang SC;
+  line-height: 60rpx;
+  font-size: 28rpx;
+  color: #888888;
+  font-weight: 500;
+}
+
+.user-item {
+  height: 120rpx;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 32rpx;
+  background-color: #ffffff;
+  border-bottom-width: 1rpx;
+  border-bottom-color: #f0f0f0;
+}
+
+.user-item--pinned { background-color: #ffffff; }
+
+.user-item__checkbox {
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 24rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 24rpx;
+  border-width: 4rpx;
+  border-color: #d9d9d9;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+}
+
+.checkbox--checked { background-color: #1C66E5; border-color: #1C66E5; }
+
+.checkbox--disabled { background-color: #f5f5f5; border-color: #d9d9d9; }
+
+.checkbox__icon { width: 24rpx; height: 24rpx; }
+
+.user-item__avatar { width: 80rpx; height: 80rpx; margin-right: 24rpx; }
+
+.user-item__avatar--all {
+  background-color: #006EFF;
+  border-radius: 8rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-item__avatar-text {
+  color: #FFFFFF;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.avatar__image {
+  width: 80rpx;
+  height: 80rpx;
+  background-color: #f5f5f5;
+  border-radius: 10rpx;
+}
+
+.user-item__info { flex: 1; }
+
+.user__name { font-size: 32rpx; color: #333333; }
+
+.alphabet-index {
+  width: 50rpx;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.alphabet-item {
+  width: 50rpx;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4rpx;
+}
+
+.alphabet__text { font-size: 20rpx; color: #666666; font-weight: 500; }
+
+/* 空态 */
+.empty {
+  padding: 80rpx 32rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty__text {
+  font-size: 26rpx;
+  color: #8F959E;
+}
+
+.user-picker__footer {
+  height: 120rpx;
+  background-color: #ffffff;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 32rpx;
+  border-top-width: 1rpx;
+  border-top-color: #e5e5e5;
+}
+
+.selected-users { flex: 1; flex-direction: row; align-items: center; }
+
+.selected-user { width: 80rpx; height: 80rpx; margin-right: 24rpx; }
+
+.selected-user__avatar {
+  width: 80rpx;
+  height: 80rpx;
+  background-color: #f5f5f5;
+  border-radius: 10rpx;
+}
+
+.selected-user--more {
+  background-color: #f0f0f0;
+  align-items: center;
+  justify-content: center;
+}
+
+.more-text { font-size: 28rpx; color: #666666; }
+
+.confirm-button {
+  width: 160rpx;
+  height: 72rpx;
+  background-color: #1C66E5;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4rpx;
+}
+
+.confirm-button--disabled { background-color: #CCE2FF; }
+
+.confirm-button__text {
+  font-size: 28rpx;
+  color: #ffffff;
+  font-weight: 500;
+}
+</style>

@@ -1,0 +1,178 @@
+<template>
+  <view class="page-container">
+    <CustomNavbar
+      position="fixed"
+      :title="navigationTitle"
+      :showBack="true"
+      :showMenu="true"
+      @back="onNavBack"
+      @menuSelect="onNavMenuSelect"
+    />
+    
+    <view
+      class="message-list-container"
+      :style="{ paddingBottom: inputToolbarHeight + 'px' }"
+      @tap="closeSoftKeyboard"
+    >
+      <MessageList
+        v-if="conversationID"
+        :conversationID="conversationID"
+        :locateMessage="locateMessage"
+        :inputToolbarHeight="inputToolbarHeight"
+        :inputPanelHeight="inputPanelHeight"
+        @onMessageListTap="closeSoftKeyboard"
+      />
+    </view>
+    
+    <MessageInput
+      v-if="conversationID"
+      ref="messageInputRef"
+      :conversationID="conversationID"
+      :setOfflinePushInfo="setOfflinePushInfo"
+      @height-change="onMessageInputHeightChange"
+    />
+  </view>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import MessageList from '@/uni_modules/tuikit-atomic-x/components/MessageList/MessageList.nvue'
+import MessageInput, { DEFAULT_TOOLS } from '@/uni_modules/tuikit-atomic-x/components/MessageInput/MessageInput.nvue'
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue'
+import { useConversationListState } from '@/uni_modules/tuikit-atomic-x/state/ConversationListState'
+import { useGroupState } from '@/uni_modules/tuikit-atomic-x/state/GroupState'
+import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState'
+import { MessageType } from '@/uni_modules/tuikit-atomic-x/types/message'
+import type { OfflinePushContext, OfflinePushInfo } from '@/uni_modules/tuikit-atomic-x/types/message'
+import voiceIcon from '@/uni_modules/tuikit-atomic-x/components/MessageList/assets/voice.png'
+import videoIcon from '@/uni_modules/tuikit-atomic-x/components/MessageList/assets/video.png'
+
+// ==================== State ====================
+const {
+  joinedGroupList,
+  loadJoinedGroups,
+} = useGroupState();
+const { loginUserInfo } = useLoginState();
+
+// ==================== 状态 ====================
+const conversationID = ref('')
+const locateMessage = ref(null)
+const isInGroup = ref(false)
+const messageInputRef = ref(null)
+const inputToolbarHeight = ref(0)
+const inputPanelHeight = ref(0)
+
+const { getConversationInfo, conversationList } = useConversationListState('chat')
+
+// ==================== 计算属性 ====================
+const isC2CConversation = computed(() => conversationID.value.startsWith('c2c_'))
+
+const currentConversation = computed(() => 
+  conversationList.value.find(conv => conv.conversationID === conversationID.value)
+)
+
+const navigationTitle = computed(() => currentConversation.value?.title || '聊天')
+
+// ==================== 导航栏 ====================
+const onNavBack = () => uni.navigateBack()
+
+const onNavMenuSelect = () => {
+  if (!isC2CConversation.value) {
+    isInGroup.value
+      = joinedGroupList.value.some(group => group.groupID === conversationID.value?.replace('group_', ''));
+    if (!isInGroup.value) {
+      uni.showToast({ title: '您已不在群内，无法进行此操作', icon: 'none' })
+      return;
+    }
+  }
+  uni.navigateTo({
+    url: `/pages/scenes/chat/chatSetting/index?conversationID=${conversationID.value}&showType=0`
+  });
+}
+
+// ==================== 输入框 ====================
+const onMessageInputHeightChange = ({ inputToolbarHeight: toolbar, inputPanelHeight: panel }) => {
+  inputToolbarHeight.value = toolbar
+  inputPanelHeight.value = panel
+}
+
+const closeSoftKeyboard = () => messageInputRef.value?.collapse()
+
+// ==================== 离线推送 ====================
+const setOfflinePushInfo = (ctx: OfflinePushContext): OfflinePushInfo | null => {
+  // 群组会话用群名；C2C 会话用当前登录用户的昵称（消息发送者本人），fallback userID
+  const title = isC2CConversation.value
+    ? (loginUserInfo.value?.nickname || loginUserInfo.value?.userID || '新消息')
+    : (currentConversation.value?.title || '新消息')
+  const conv = ctx.conversationID
+
+  let description = '[新消息]'
+  switch (ctx.messageType) {
+    case MessageType.TEXT:
+      description = (ctx.messagePayload as { text?: string })?.text || '[文本消息]'
+      break
+    case MessageType.IMAGE:
+      description = '[图片]'
+      break
+    case MessageType.VIDEO:
+      description = '[视频]'
+      break
+    case MessageType.AUDIO:
+      description = '[语音]'
+      break
+    case MessageType.FILE:
+      description = '[文件]'
+      break
+    case MessageType.CUSTOM:
+      return null
+    default:
+      return null
+  }
+
+  return {
+    title,
+    description,
+    extensionInfo: {
+      ext: JSON.stringify({
+        conversationID: conv,
+        messageType: ctx.messageType,
+      })
+    },
+  }
+}
+
+// ==================== 生命周期 ====================
+onLoad((options) => {
+  if (!options.conversationID) {
+    console.error('未接收到 conversationID 参数')
+    return
+  }
+  
+  conversationID.value = options.conversationID
+  getConversationInfo(conversationID.value);
+  loadJoinedGroups();
+  
+  // 处理定位消息
+  if (uni.$locateMessage) {
+    locateMessage.value = uni.$locateMessage
+    uni.$locateMessage = null
+  }
+})
+
+onShow(() => getConversationInfo(conversationID.value))
+</script>
+
+<style>
+.page-container {
+  flex: 1;
+  flex-direction: column;
+  background-color: #F9FAFC;
+}
+
+.message-list-container {
+  flex: 1;
+  flex-direction: column;
+  background-color: #F9FAFC;
+}
+</style>

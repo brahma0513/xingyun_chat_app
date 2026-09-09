@@ -15,7 +15,7 @@ export const api_key  = api_key2
 export const appVersion  = appVersion2
 
 export const appExamine  = appExamine2
-export const is_h5_package  = is_h5_package
+export const is_h5_package  = is_h5_package2
 
 export const app_id  = 10000
 

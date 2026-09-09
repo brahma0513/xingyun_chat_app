@@ -1,0 +1,44 @@
+/**
+ * interface接口
+ * @module interface
+ */
+
+// ================= 实验性接口 相关 =================
+export type CallExperimentalAPIOptions = {
+  jsonData: string;
+  onResponse?: (jsonData: string) => void;
+}
+
+/**
+ * hybridBridge addListener 参数
+ * @interface HybridListenerOptions
+ * @description addListener options
+ * @param {string} store -  store 名称（必填）
+ * @param {string} name -  监听的变量名称（必填）
+ * @param {any} params - 参数
+ */
+export type HybridListenerOptions = {
+  type: string;
+  store: string;
+  name: string;
+  roomID?: string;
+  listenerID?: string;
+  params?: any;
+}
+
+export type HybridResponseData = {
+  api: string;
+  code: number;
+  message?: string;
+  data?: any;
+}
+
+/**
+ * 从系统相册选择单张图片
+ * @param onSuccess - 选中图片后的回调，返回临时文件路径
+ * @param onCancel - 用户取消选择的回调
+ */
+export type PickSingleImageFromAlbum = (
+  onSuccess: (tempFilePath: string) => void,
+  onCancel: () => void
+) => void;

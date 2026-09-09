@@ -1,0 +1,77 @@
+<template>
+  <view class="user-picker-page">
+    <UserPickerList
+      :maxCount="maxCount"
+      :dataSource="userList"
+      :lockedItems="lockedItems"
+      :title="title"
+      :singleSelect="singleSelect"
+      :pinnedTopItems="pinnedTopItems"
+      :remoteSearch="remoteSearch"
+      :enableSearch="enableSearch"
+      @confirm="handleConfirm"
+      @searchChange="handleSearchChange"
+    />
+  </view>
+</template>
+<script>
+import UserPickerList from './components/UserPickerList.nvue'
+import { useUserPicker } from './service/index'
+export default {
+  components: { UserPickerList },
+  props: {
+    businessType: { type: Number, default: -1 },
+    routeParams: { type: Object, default: function() { return {} } },
+  },
+  data() {
+    return { picker: null }
+  },
+  watch: {
+    businessType: {
+      handler: function(val) {
+        if (val >= 0) {
+          this.picker = useUserPicker(val, this.routeParams)
+        }
+      },
+      immediate: true
+    },
+  },
+  computed: {
+    userList() { return (this.picker && this.picker.userList) ? (this.picker.userList.value || []) : [] },
+    lockedItems() { return (this.picker && this.picker.lockedItems) ? (this.picker.lockedItems.value || []) : [] },
+    maxCount() { return this.picker ? this.picker.maxCount : 500 },
+    title() { return this.picker ? this.picker.title : '选择用户' },
+    singleSelect() { return !!(this.picker && this.picker.singleSelect) },
+    pinnedTopItems() {
+      if (!this.picker || !this.picker.pinnedTopItems) return []
+      return this.picker.pinnedTopItems.value || []
+    },
+    remoteSearch() { return !!(this.picker && typeof this.picker.onSearchChange === 'function') },
+    // enableSearch 优先取 hook 返回值；其次回退到 routeParams.enableSearch；默认 true
+    enableSearch() {
+      if (this.picker && this.picker.enableSearch != null) return !!this.picker.enableSearch
+      if (this.routeParams && this.routeParams.enableSearch != null) {
+        var v = this.routeParams.enableSearch
+        return !(v === false || v === 'false' || v === 0 || v === '0')
+      }
+      return true
+    },
+  },
+  beforeDestroy() { if (this.picker && this.picker.handleCancel) this.picker.handleCancel() },
+  beforeUnmount() { if (this.picker && this.picker.handleCancel) this.picker.handleCancel() },
+  methods: {
+    handleConfirm(selectedUsers) {
+      this.$emit('confirm', selectedUsers)
+      if (this.picker) this.picker.handleConfirm(selectedUsers)
+    },
+    handleSearchChange(keyword) {
+      if (this.picker && typeof this.picker.onSearchChange === 'function') {
+        this.picker.onSearchChange(keyword)
+      }
+    },
+  },
+}
+</script>
+<style>
+.user-picker-page { flex: 1; background-color: #f5f5f5; }
+</style>
