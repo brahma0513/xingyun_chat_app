@@ -1,7 +1,7 @@
 <template>
   <view class="avatar-container" :class="{ 'pure-mode': pureMode }">
     <!-- 头像图片 -->
-    <image 
+    <image
       v-if="avatarSrc || defaultAvatarUrl"
       :src="avatarSrc || defaultAvatarUrl"
       :style="avatarStyle"
@@ -9,7 +9,7 @@
       mode="aspectFill"
       @error="handleImageError"
     />
-    
+
     <!-- 默认头像（显示首字符） -->
     <view v-else class="avatar-default" :style="avatarStyle">
       <text class="avatar-text" :style="textStyle">{{ firstChar }}</text>
@@ -17,7 +17,7 @@
 
     <!-- 在线状态指示器 -->
     <view v-if="showOnline" class="online-indicator"></view>
-    
+
     <!-- 未读消息数量徽章 -->
     <view v-if="badgeCount > 0" class="badge" :class="{ 'badge-dot': showBadgeDot }">
       <text v-if="!showBadgeDot" class="badge-text">{{ badgeCount > 99 ? '99+' : badgeCount }}</text>
@@ -25,99 +25,8 @@
   </view>
 </template>
 
-<script setup>
-import { ref, computed, watch, onMounted } from 'vue'
-
-const props = defineProps({
-  // 头像图片地址
-  src: {
-    type: String,
-    default: ''
-  },
-  // 用户名称（用于生成默认头像）
-  name: {
-    type: String,
-    default: ''
-  },
-  // 头像大小
-  size: {
-    type: Number,
-    default: 96
-  },
-  // 是否显示在线状态
-  showOnline: {
-    type: Boolean,
-    default: false
-  },
-  // 徽章数量
-  badgeCount: {
-    type: Number,
-    default: 0
-  },
-  // 是否只显示红点，不显示数字
-  showBadgeDot: {
-    type: Boolean,
-    default: false
-  },
-  // 头像形状：circle(圆形) | square(方形)
-  shape: {
-    type: String,
-    default: 'square'
-  },
-  // 默认头像类型：none | user | work | public | meeting | avchatroom
-  // 当 src 为空时，使用对应的默认头像图片；none 表示显示首字符
-  defaultAvatarType: {
-    type: String,
-    default: 'none'
-  },
-  // 纯净模式，没有外层的 padding
-  pureMode: {
-    type: Boolean,
-    default: false
-  },
-  // 懒加载：mount 时不立即赋值 src，让出主线程后再加载远程图
-  lazy: {
-    type: Boolean,
-    default: false
-  }
-})
-
-// 头像图片地址；lazy 模式下 mount 时为空，下一个事件循环再赋值
-const avatarSrc = ref(props.lazy ? '' : props.src)
-
-onMounted(() => {
-  if (props.lazy && props.src) {
-    setTimeout(() => {
-      avatarSrc.value = props.src
-    }, 0)
-  }
-})
-
-watch(() => props.src, (newVal) => {
-  avatarSrc.value = newVal;
-});
-
-/**
- * 头像样式
- */
-const avatarStyle = computed(() => ({
-  width: `${props.size}rpx`,
-  height: `${props.size}rpx`,
-  borderRadius: props.shape === 'circle' ? `${props.size / 2}rpx` : '10rpx'
-}))
-
-/**
- * 文字样式
- */
-const textStyle = computed(() => ({
-  fontSize: `${Math.floor(props.size * 0.4)}rpx`,
-  color: 'rgba(0, 0, 0, 0.9)'
-}))
-
-/**
- * 默认头像在线资源 URL
- */
-const DEFAULT_AVATAR_URLS = {
+<script>
+var DEFAULT_AVATAR_URLS = {
   user: 'https://web.sdk.qcloud.com/im/assets/all-in-one/user.png',
   work: 'https://web.sdk.qcloud.com/im/assets/all-in-one/work.png',
   public: 'https://web.sdk.qcloud.com/im/assets/all-in-one/public.png',
@@ -125,46 +34,98 @@ const DEFAULT_AVATAR_URLS = {
   avchatroom: 'https://web.sdk.qcloud.com/im/assets/all-in-one/avchatroom.png'
 }
 
-/**
- * 默认头像 URL
- */
-const defaultAvatarUrl = computed(() => {
-  return DEFAULT_AVATAR_URLS[props.defaultAvatarType] || ''
-})
-
-/**
- * 首字符（用于默认头像）
- */
-const firstChar = computed(() => {
-  if (!props.name) return '?'
-  
-  // 提取中文、英文或数字的第一个字符
-  const match = props.name.match(/[\u4e00-\u9fa5]|[a-zA-Z]|[0-9]/)
-  return match ? match[0].toUpperCase() : '?'
-})
-
-/**
- * 处理图片加载错误
- */
-const handleImageError = () => {
-  avatarSrc.value = ''
-}
-
-/**
- * 生成默认头像背景色
- */
-const getDefaultBgColor = () => {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
-  ]
-  
-  let hash = 0
-  for (let i = 0; i < props.name.length; i++) {
-    hash = props.name.charCodeAt(i) + ((hash << 5) - hash)
+export default {
+  name: 'Avatar',
+  props: {
+    src: {
+      type: String,
+      default: ''
+    },
+    name: {
+      type: String,
+      default: ''
+    },
+    size: {
+      type: Number,
+      default: 96
+    },
+    showOnline: {
+      type: Boolean,
+      default: false
+    },
+    badgeCount: {
+      type: Number,
+      default: 0
+    },
+    showBadgeDot: {
+      type: Boolean,
+      default: false
+    },
+    shape: {
+      type: String,
+      default: 'square'
+    },
+    defaultAvatarType: {
+      type: String,
+      default: 'none'
+    },
+    pureMode: {
+      type: Boolean,
+      default: false
+    },
+    // 懒加载：mount 时不立即赋值 src，让出主线程后再加载远程图
+    lazy: {
+      type: Boolean,
+      default: false
+    }
+  },
+  data() {
+    return {
+      // lazy 模式下 mount 时为空，下一个事件循环再赋值
+      avatarSrc: this.lazy ? '' : this.src
+    }
+  },
+  mounted() {
+    if (this.lazy && this.src) {
+      var self = this
+      setTimeout(function() {
+        self.avatarSrc = self.src
+      }, 0)
+    }
+  },
+  watch: {
+    src(newVal) {
+      this.avatarSrc = newVal
+    }
+  },
+  computed: {
+    avatarStyle() {
+      return {
+        width: this.size + 'rpx',
+        height: this.size + 'rpx',
+        borderRadius: this.shape === 'circle' ? (this.size / 2) + 'rpx' : '10rpx'
+      }
+    },
+    textStyle() {
+      return {
+        fontSize: Math.floor(this.size * 0.4) + 'rpx',
+        color: 'rgba(0, 0, 0, 0.9)'
+      }
+    },
+    defaultAvatarUrl() {
+      return DEFAULT_AVATAR_URLS[this.defaultAvatarType] || ''
+    },
+    firstChar() {
+      if (!this.name) return '?'
+      var match = this.name.match(/[\u4e00-\u9fa5]|[a-zA-Z]|[0-9]/)
+      return match ? match[0].toUpperCase() : '?'
+    }
+  },
+  methods: {
+    handleImageError() {
+      this.avatarSrc = ''
+    }
   }
-  
-  return colors[Math.abs(hash) % colors.length]
 }
 </script>
 

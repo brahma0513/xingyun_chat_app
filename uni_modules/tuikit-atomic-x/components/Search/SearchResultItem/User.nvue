@@ -1,91 +1,38 @@
 <template>
-  <ResultItem
-    :avatarURL="avatarURL"
-    :title="displayName"
-    :titleSuffix="titleSuffix"
-    :subtitle="subtitle"
-    :keyword="keyword"
-    :Avatar="Avatar"
-    defaultAvatarType="user"
-  />
+  <ResultItem :avatarURL="avatarURL" :title="displayName" :titleSuffix="titleSuffix" :subtitle="subtitle" :keyword="keyword" :Avatar="Avatar" defaultAvatarType="user" />
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
+<script>
 import AvatarComponent from '../../Avatar'
 import ResultItem from './ResultItem.nvue'
-import type { SearchResultItemUserProps, FriendSearchInfo } from '../../../types/search'
-import type { UserProfile } from '../../../types/userProfile'
-import type { GroupMember } from '../../../types/group'
-
-const props = withDefaults(defineProps<SearchResultItemUserProps>(), {
-  keyword: '',
-  Avatar: () => AvatarComponent
-})
-
-// 获取用户基础信息
-const getUserProfile = computed((): UserProfile | null => {
-  if (props.type === 'friend') {
-    return (props.user as FriendSearchInfo).userInfo || null
-  }
-  if (props.type === 'user') {
-    return props.user as UserProfile
-  }
-  return null
-})
-
-// 头像URL
-const avatarURL = computed(() => {
-  if (props.type === 'friend') {
-    const friend = props.user as FriendSearchInfo
-    return friend.userInfo?.avatarURL || ''
-  }
-  return (props.user as UserProfile | GroupMember).avatarURL || ''
-})
-
-// 显示名称
-const displayName = computed(() => {
-  if (props.type === 'friend') {
-    const friend = props.user as FriendSearchInfo
-    return friend.friendRemark || friend.userInfo?.nickname || friend.userID || '未知用户'
-  }
-  if (props.type === 'groupMember') {
-    const member = props.user as GroupMember
-    return member.nameCard || member.friendRemark || member.nickname || member.userID || '未知用户'
-  }
-  // type === 'user'
-  const user = props.user as UserProfile
-  return user.nickname || user.userID || '未知用户'
-})
-
-// 标题后缀（显示 userID）
-const titleSuffix = computed(() => {
-  const userID = props.user.userID
-  return userID ? `(${userID})` : ''
-})
-
-// 副标题
-const subtitle = computed(() => {
-  const parts: string[] = []
-  const profile = getUserProfile.value
-  
-  if (profile) {
-    // 性别
-    if (profile.gender === 1) {
-      parts.push('男')
-    } else if (profile.gender === 2) {
-      parts.push('女')
-    }
-    // 年龄
-    if (profile.birthday) {
-      const birthYear = new Date(profile.birthday * 1000).getFullYear()
-      const age = new Date().getFullYear() - birthYear
-      if (age > 0 && age < 150) {
-        parts.push(`${age}岁`)
+export default {
+  components: { ResultItem },
+  props: {
+    type: { type: String, default: 'friend' },
+    user: { type: Object, default: function() { return {} } },
+    keyword: { type: String, default: '' },
+    Avatar: { type: [Object, Function], default: function() { return AvatarComponent } },
+  },
+  computed: {
+    avatarURL() {
+      if (this.type === 'friend') return (this.user.userInfo && this.user.userInfo.avatarURL) || ''
+      return this.user.avatarURL || ''
+    },
+    displayName() {
+      if (this.type === 'friend') return this.user.friendRemark || (this.user.userInfo && this.user.userInfo.nickname) || this.user.userID || '未知用户'
+      if (this.type === 'groupMember') return this.user.nameCard || this.user.friendRemark || this.user.nickname || this.user.userID || '未知用户'
+      return this.user.nickname || this.user.userID || '未知用户'
+    },
+    titleSuffix() { return this.user.userID ? '(' + this.user.userID + ')' : '' },
+    subtitle() {
+      var parts = []
+      var profile = this.type === 'friend' ? (this.user.userInfo || null) : (this.type === 'user' ? this.user : null)
+      if (profile) {
+        if (profile.gender === 1) parts.push('男')
+        else if (profile.gender === 2) parts.push('女')
+        if (profile.birthday) { var age = new Date().getFullYear() - new Date(profile.birthday * 1000).getFullYear(); if (age > 0 && age < 150) parts.push(age + '岁') }
       }
-    }
-  }
-  
-  return parts.join(' ')
-})
+      return parts.join(' ')
+    },
+  },
+}
 </script>

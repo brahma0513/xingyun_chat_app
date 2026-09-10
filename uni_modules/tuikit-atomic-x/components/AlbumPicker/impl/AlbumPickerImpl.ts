@@ -5,59 +5,61 @@
  * Author: eddardliu
  */
 
-import {
-	AlbumMedia,
-	AlbumMediaType,
-	AlbumPickerConfig,
-	AlbumPickerTheme,
-} from '../AlbumPicker';
+import { AlbumMediaType } from '../AlbumPicker';
 
-export class AlbumPickerImpl {
+export var AlbumPickerImpl = {
+  serializeConfig: function(config: any) {
+    var c = config || {};
+    return {
+      pickMode: c.mediaFilter != null ? c.mediaFilter : null,
+      maxCount: c.maxSelectionCount != null ? c.maxSelectionCount : null,
+      gridCount: c.itemsPerRow != null ? c.itemsPerRow : null,
+      showsCameraItem: c.showsCameraItem != null ? c.showsCameraItem : null,
+      style: c.style != null ? c.style : null,
+      language: c.language != null ? c.language : null,
+      compressQuality: c.compressQuality != null ? c.compressQuality : null,
+      maxVideoDurationInSeconds: c.maxVideoDurationInSeconds != null ? c.maxVideoDurationInSeconds : null,
+      maxOutputFileSizeInMB: c.maxOutputFileSizeInMB != null ? c.maxOutputFileSizeInMB : null,
+    };
+  },
 
-	serializeConfig(config ?: AlbumPickerConfig) : object {
-		return {
-			pickMode: config?.mediaFilter ?? null,
-			maxCount: config?.maxSelectionCount ?? null,
-			gridCount: config?.itemsPerRow ?? null,
-			showsCameraItem: config?.showsCameraItem ?? null,
-			style: config?.style ?? null,
-			language: config?.language ?? null,
-			compressQuality: config?.compressQuality ?? null,
-			maxVideoDurationInSeconds: config?.maxVideoDurationInSeconds ?? null,
-			maxOutputFileSizeInMB: config?.maxOutputFileSizeInMB ?? null,
-		};
-	}
+  serializeTheme: function(theme: any) {
+    var t = theme || {};
+    return {
+      primaryColor: t.primaryColor != null ? t.primaryColor : null,
+      backgroundColor: t.backgroundColor != null ? t.backgroundColor : null,
+      backgroundColorSecondary: t.backgroundColorSecondary != null ? t.backgroundColorSecondary : null,
+      textColor: t.textColor != null ? t.textColor : null,
+      textColorSecondary: t.textColorSecondary != null ? t.textColorSecondary : null,
+      confirmButtonIconAsset: t.confirmButtonIconAsset != null ? t.confirmButtonIconAsset : null,
+      bigFontSize: t.bigFontSize != null ? t.bigFontSize : null,
+      normalFontSize: t.normalFontSize != null ? t.normalFontSize : null,
+      smallFontSize: t.smallFontSize != null ? t.smallFontSize : null,
+      bigRadius: t.bigRadius != null ? t.bigRadius : null,
+      normalRadius: t.normalRadius != null ? t.normalRadius : null,
+      smallRadius: t.smallRadius != null ? t.smallRadius : null,
+    };
+  },
 
-	serializeTheme(theme ?: AlbumPickerTheme) : object {
-		return {
-			primaryColor: theme?.primaryColor ?? null,
-			backgroundColor: theme?.backgroundColor ?? null,
-			backgroundColorSecondary: theme?.backgroundColorSecondary ?? null,
-			textColor: theme?.textColor ?? null,
-			textColorSecondary: theme?.textColorSecondary ?? null,
-			confirmButtonIconAsset: theme?.confirmButtonIconAsset ?? null,
-			bigFontSize: theme?.bigFontSize ?? null,
-			normalFontSize: theme?.normalFontSize ?? null,
-			smallFontSize: theme?.smallFontSize ?? null,
-			bigRadius: theme?.bigRadius ?? null,
-			normalRadius: theme?.normalRadius ?? null,
-			smallRadius: theme?.smallRadius ?? null,
-		};
-	}
+  parseAlbumMedia: function(data: any) {
+    var d = data || {};
+    return {
+      id: d.id || 0,
+      mediaType: d.mediaType === 1 ? AlbumMediaType.VIDEO : AlbumMediaType.IMAGE,
+      mediaPath: d.mediaPath || '',
+      fileExtension: d.fileExtension || '',
+      fileSize: d.fileSize || 0,
+      videoThumbnailPath: d.videoThumbnailPath || undefined,
+      duration: d.duration || 0,
+    };
+  },
 
-	static parseAlbumMedia(data : any) : AlbumMedia {
-		return {
-			id: data.id as number ?? 0,
-			mediaType: (data.mediaType as number) === 1 ? AlbumMediaType.VIDEO : AlbumMediaType.IMAGE,
-			mediaPath: data.mediaPath as string ?? '',
-			fileExtension: data.fileExtension as string ?? '',
-			fileSize: data.fileSize as number ?? 0,
-			videoThumbnailPath: data.videoThumbnailPath as string ?? undefined,
-			duration: data.duration as number ?? 0,
-		};
-	}
-
-	static parseAlbumMediaList(dataList : any[]) : AlbumMedia[] {
-		return dataList.map((item : any) => AlbumPickerImpl.parseAlbumMedia(item));
-	}
-}
+  parseAlbumMediaList: function(dataList: any) {
+    var list = dataList || [];
+    var result: any[] = [];
+    for (var i = 0; i < list.length; i++) {
+      result.push(AlbumPickerImpl.parseAlbumMedia(list[i]));
+    }
+    return result;
+  },
+};

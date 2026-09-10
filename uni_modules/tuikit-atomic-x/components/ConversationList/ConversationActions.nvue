@@ -1,13 +1,13 @@
 <template>
   <view class="conversation-actions">
-    <view 
+    <view
       v-for="action in actionList"
       :key="action.key"
       class="conversation-actions__action"
       :style="getActionStyle(action)"
       @tap.stop="handleActionTap(action)"
     >
-      <text 
+      <text
         class="conversation-actions__action-text"
         :style="getTextStyle(action)"
       >
@@ -17,121 +17,128 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue'
+<script>
 import { ConversationReceiveOption } from '../../types/conversation'
 import { ConversationActionType } from '../../types/conversationList'
-import type { 
-  ActionItem, 
-  ConversationActionsProps, 
-  ConversationActionsEmits
-} from '../../types/conversationList'
 
-const props = withDefaults(defineProps<ConversationActionsProps>(), {
-  isSupportPin: true,
-  isSupportMute: true,
-  isSupportDelete: true
-})
+export default {
+  name: 'ConversationActions',
+  props: {
+    conversation: {
+      type: Object,
+      required: true
+    },
+    actions: {
+      type: Array,
+      default: null
+    },
+    isSupportPin: {
+      type: Boolean,
+      default: true
+    },
+    isSupportMute: {
+      type: Boolean,
+      default: true
+    },
+    isSupportDelete: {
+      type: Boolean,
+      default: true
+    }
+  },
+  computed: {
+    isMuted() {
+      return this.conversation.receiveOption === ConversationReceiveOption.NOT_RECEIVE ||
+             this.conversation.receiveOption === ConversationReceiveOption.NOT_NOTIFY
+    },
+    actionList() {
+      if (this.actions && this.actions.length > 0) {
+        return this.actions.map(action => ({
+          ...action,
+          text: action.text || this.getDefaultText(action.key)
+        }))
+      }
 
-const emit = defineEmits<ConversationActionsEmits>()
+      const actions = []
 
-const isMuted = computed(() => {
-  return props.conversation.receiveOption === ConversationReceiveOption.NOT_RECEIVE ||
-         props.conversation.receiveOption === ConversationReceiveOption.NOT_NOTIFY
-})
+      if (this.isSupportMute) {
+        actions.push({
+          key: ConversationActionType.MUTE,
+          text: this.isMuted ? '取消免打扰' : '免打扰'
+        })
+      }
 
-const getDefaultText = (key: string): string => {
-  switch (key) {
-    case ConversationActionType.PIN:
-      return props.conversation.isPinned ? '取消置顶' : '置顶'
-    case ConversationActionType.MUTE:
-      return isMuted.value ? '取消免打扰' : '免打扰'
-    case ConversationActionType.DELETE:
-      return '删除'
-    default:
-      return key
-  }
-}
+      if (this.isSupportPin) {
+        actions.push({
+          key: ConversationActionType.PIN,
+          text: this.conversation.isPinned ? '取消置顶' : '置顶'
+        })
+      }
 
-const actionList = computed<ActionItem[]>(() => {
-  if (props.actions && props.actions.length > 0) {
-    return props.actions.map(action => ({
-      ...action,
-      text: action.text || getDefaultText(action.key)
-    }))
-  }
-  
-  const actions: ActionItem[] = []
-  
-  if (props.isSupportMute) {
-    actions.push({
-      key: ConversationActionType.MUTE,
-      text: isMuted.value ? '取消免打扰' : '免打扰'
-    })
-  }
-  
-  if (props.isSupportPin) {
-    actions.push({
-      key: ConversationActionType.PIN,
-      text: props.conversation.isPinned ? '取消置顶' : '置顶'
-    })
-  }
-  
-  if (props.isSupportDelete) {
-    actions.push({
-      key: ConversationActionType.DELETE,
-      text: '删除'
-    })
-  }
-  
-  return actions
-})
+      if (this.isSupportDelete) {
+        actions.push({
+          key: ConversationActionType.DELETE,
+          text: '删除'
+        })
+      }
 
-const getDefaultBackgroundColor = (key: string): string => {
-  switch (key) {
-    case ConversationActionType.PIN:
-      return '#FF7200'
-    case ConversationActionType.MUTE:
-      return '#1C66E5'
-    case ConversationActionType.DELETE:
-      return '#E54545'
-    default:
-      return '#999999'
-  }
-}
+      return actions
+    }
+  },
+  methods: {
+    getDefaultText(key) {
+      switch (key) {
+        case ConversationActionType.PIN:
+          return this.conversation.isPinned ? '取消置顶' : '置顶'
+        case ConversationActionType.MUTE:
+          return this.isMuted ? '取消免打扰' : '免打扰'
+        case ConversationActionType.DELETE:
+          return '删除'
+        default:
+          return key
+      }
+    },
+    getDefaultBackgroundColor(key) {
+      switch (key) {
+        case ConversationActionType.PIN:
+          return '#FF7200'
+        case ConversationActionType.MUTE:
+          return '#1C66E5'
+        case ConversationActionType.DELETE:
+          return '#E54545'
+        default:
+          return '#999999'
+      }
+    },
+    getActionStyle(action) {
+      return {
+        backgroundColor: action.backgroundColor || this.getDefaultBackgroundColor(action.key)
+      }
+    },
+    getTextStyle(action) {
+      return {
+        color: action.color || '#ffffff'
+      }
+    },
+    handleActionTap(action) {
+      const conversationID = this.conversation.conversationID
 
-const getActionStyle = (action: ActionItem) => {
-  return {
-    backgroundColor: action.backgroundColor || getDefaultBackgroundColor(action.key)
-  }
-}
+      if (action.onClick && typeof action.onClick === 'function') {
+        action.onClick(conversationID)
+        return
+      }
 
-const getTextStyle = (action: ActionItem) => {
-  return {
-    color: action.color || '#ffffff'
-  }
-}
-
-const handleActionTap = (action: ActionItem) => {
-  const conversationID = props.conversation.conversationID
-  
-  // 如果是自定义 action 且有 onClick 回调，则调用回调
-  if (action.onClick && typeof action.onClick === 'function') {
-    action.onClick(conversationID)
-    return
-  }
-  
-  // 处理内置 action
-  switch (action.key) {
-    case ConversationActionType.PIN:
-      emit('conversationPin', conversationID, !props.conversation.isPinned)
-      break
-    case ConversationActionType.MUTE:
-      emit('conversationMute', conversationID, !isMuted.value)
-      break
-    case ConversationActionType.DELETE:
-      emit('conversationDelete', conversationID)
-      break
+      switch (action.key) {
+        case ConversationActionType.PIN:
+          this.$emit('conversationPin', conversationID, !this.conversation.isPinned)
+          break
+        case ConversationActionType.MUTE:
+          this.$emit('conversationMute', conversationID, !this.isMuted)
+          break
+        case ConversationActionType.DELETE:
+          this.$emit('conversationDelete', conversationID)
+          break
+      }
+    }
   }
 }
 </script>

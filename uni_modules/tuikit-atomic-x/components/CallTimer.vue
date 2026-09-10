@@ -4,27 +4,48 @@
   </view>
 </template>
 
-<script setup lang="ts">
-  import { computed } from 'vue';
+<script>
   import { useCallState } from '@/uni_modules/tuikit-atomic-x/state/CallState';
 
-  const { selfInfo, activeCall } = useCallState();
+  var callStateInstance = useCallState();
 
-  const isConnected = computed(() => {
-    return selfInfo.value?.status === 2;
-  });
-
-  const formattedTime = computed(() => {
-    const duration = activeCall.value?.duration ?? 0;
-    const hours = Math.floor(duration / 3600);
-    const minutes = Math.floor((duration % 3600) / 60);
-    const seconds = duration % 60;
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    if (hours > 0) {
-      return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  export default {
+    data: function() {
+      return {};
+    },
+    computed: {
+      selfInfo: function() {
+        return callStateInstance.state.selfInfo;
+      },
+      activeCall: function() {
+        return callStateInstance.state.activeCall;
+      },
+      isConnected: function() {
+        var info = this.selfInfo;
+        if (info && info.status === 2) {
+          return true;
+        }
+        return false;
+      },
+      formattedTime: function() {
+        var call = this.activeCall;
+        var duration = 0;
+        if (call && call.duration) {
+          duration = call.duration;
+        }
+        var hours = Math.floor(duration / 3600);
+        var minutes = Math.floor((duration % 3600) / 60);
+        var seconds = duration % 60;
+        var hStr = hours < 10 ? '0' + hours : '' + hours;
+        var mStr = minutes < 10 ? '0' + minutes : '' + minutes;
+        var sStr = seconds < 10 ? '0' + seconds : '' + seconds;
+        if (hours > 0) {
+          return hStr + ':' + mStr + ':' + sStr;
+        }
+        return mStr + ':' + sStr;
+      }
     }
-    return `${pad(minutes)}:${pad(seconds)}`;
-  });
+  };
 </script>
 
 <style scoped>

@@ -11,37 +11,68 @@
   </view>
 </template>
 
-<script setup lang="ts">
-  import { ref, computed, onMounted } from 'vue';
+<script>
   import FloatWindow from './Call/Controls/floatWindow.vue';
   import CallTimer from './CallTimer.vue';
   import { useCallState } from '@/uni_modules/tuikit-atomic-x/state/CallState';
 
-  declare const uni: any;
+  var callStateInstance = useCallState();
 
-  const { selfInfo, activeCall } = useCallState();
-
-  const safeAreaTop = ref(0);
-
-  // 通话已接通（status === 2）
-  const isConnected = computed(() => {
-    return selfInfo.value?.status === 2;
-  });
-
-  // 主叫方呼叫中（status === 1 且自己是邀请者）
-  const isGroupCalling = computed(() => {
-    return selfInfo.value?.status === 1
-      && activeCall.value
-      && activeCall.value.inviterId === uni.$userID && (activeCall.value.inviteeIds.length > 1 || activeCall.value.chatGroupId !== '');
-  });
-
-  onMounted(() => {
-    uni.getSystemInfo({
-      success: (res) => {
-        safeAreaTop.value = res.safeArea?.top + 20 || 0;
+  export default {
+    components: {
+      FloatWindow: FloatWindow,
+      CallTimer: CallTimer
+    },
+    data: function() {
+      return {
+        safeAreaTop: 0
+      };
+    },
+    computed: {
+      selfInfo: function() {
+        return callStateInstance.state.selfInfo;
+      },
+      activeCall: function() {
+        return callStateInstance.state.activeCall;
+      },
+      isConnected: function() {
+        var info = this.selfInfo;
+        if (info && info.status === 2) {
+          return true;
+        }
+        return false;
+      },
+      isGroupCalling: function() {
+        var info = this.selfInfo;
+        var call = this.activeCall;
+        if (!info || info.status !== 1) {
+          return false;
+        }
+        if (!call) {
+          return false;
+        }
+        if (call.inviterId !== uni.$userID) {
+          return false;
+        }
+        if (call.inviteeIds.length > 1 || call.chatGroupId !== '') {
+          return true;
+        }
+        return false;
       }
-    });
-  });
+    },
+    mounted: function() {
+      var self = this;
+      uni.getSystemInfo({
+        success: function(res) {
+          var top = 0;
+          if (res.safeArea && res.safeArea.top) {
+            top = res.safeArea.top + 20;
+          }
+          self.safeAreaTop = top;
+        }
+      });
+    }
+  };
 </script>
 
 <style scoped>

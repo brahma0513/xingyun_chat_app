@@ -1,40 +1,50 @@
 <template>
   <view class="btn" @tap="handleBlur">
-    <image class="btn-img" :style="[style]" :src="BLUR_OFF_SRC"></image>
+    <image class="btn-img" :style="[btnStyle]" :src="isBlur ? BLUR_ON_SRC : BLUR_OFF_SRC"></image>
     <text class="btn-text" v-if="isShowText">背景模糊</text>
   </view>
 </template>
 
-<script setup lang="ts">
-  import { computed, ref } from "vue";
-  import BLUR_ON_SRC from "../../../static/icon/blur-on.png";
-  import BLUR_OFF_SRC from "../../../static/icon/blur-off.png";
-  import {
-    useCallState
-  } from '@/uni_modules/tuikit-atomic-x/state/CallState';
-  const {
-    enableVirtualBackground
-  } = useCallState()
-  const isBlur = ref(false)
-  const props = defineProps({
-    size: {
-      type: Number,
-      default: 60,
-    },
-    isShowText: {
-      type: Boolean,
-      default: true,
-    },
-  });
+<script>
+  import { useCallState } from '@/uni_modules/tuikit-atomic-x/state/CallState';
 
-  const style = computed(() => ({
-    width: props.size + "px",
-    height: props.size + "px",
-  }));
+  var BLUR_ON_SRC = '/uni_modules/tuikit-atomic-x/static/icon/blur-on.png';
+  var BLUR_OFF_SRC = '/uni_modules/tuikit-atomic-x/static/icon/blur-off.png';
 
-  const handleBlur = () => {
-    enableVirtualBackground(!isBlur.value)
-    isBlur.value = !isBlur.value
+  var callStateInstance = useCallState();
+
+  export default {
+    props: {
+      size: {
+        type: Number,
+        default: 60
+      },
+      isShowText: {
+        type: Boolean,
+        default: true
+      }
+    },
+    data: function() {
+      return {
+        isBlur: false,
+        BLUR_ON_SRC: BLUR_ON_SRC,
+        BLUR_OFF_SRC: BLUR_OFF_SRC
+      };
+    },
+    computed: {
+      btnStyle: function() {
+        return {
+          width: this.size + 'px',
+          height: this.size + 'px'
+        };
+      }
+    },
+    methods: {
+      handleBlur: function() {
+        callStateInstance.enableVirtualBackground(!this.isBlur);
+        this.isBlur = !this.isBlur;
+      }
+    }
   };
 </script>
 

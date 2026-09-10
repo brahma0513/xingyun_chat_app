@@ -1,43 +1,50 @@
 <template>
   <view class="btn" @tap="handleSwitchCamera">
-    <image class="btn-img" :style="[style]" :src="SWITCH_CAMERA_SRC"></image>
+    <image class="btn-img" :style="[btnStyle]" :src="SWITCH_CAMERA_SRC"></image>
     <text class="btn-text" v-if="isShowText">
       翻转
     </text>
   </view>
 </template>
 
-<script setup lang="ts">
-  import { computed, ref } from "vue";
-  import SWITCH_CAMERA_SRC from "../../../static/icon/switch-camera.png";
-  import {
-    useDeviceState
-  } from '@/uni_modules/tuikit-atomic-x/state/DeviceState';
-  const {
-    switchCamera,
-    isFrontCamera
-  } = useDeviceState()
+<script>
+  import { useDeviceState } from '@/uni_modules/tuikit-atomic-x/state/DeviceState';
 
-  const props = defineProps({
-    size: {
-      type: Number,
-      default: 60,
+  var SWITCH_CAMERA_SRC = '/uni_modules/tuikit-atomic-x/static/icon/switch-camera.png';
+
+  var deviceStateInstance = useDeviceState();
+
+  export default {
+    props: {
+      size: {
+        type: Number,
+        default: 60
+      },
+      isShowText: {
+        type: Boolean,
+        default: true
+      }
     },
-    isShowText: {
-      type: Boolean,
-      default: true,
+    data: function() {
+      return {
+        SWITCH_CAMERA_SRC: SWITCH_CAMERA_SRC
+      };
     },
-  });
-
-  const style = computed(() => ({
-    width: props.size + "px",
-    height: props.size + "px",
-  }));
-
-  const handleSwitchCamera = () => {
-    switchCamera({
-      isFront: !isFrontCamera.value
-    })
+    computed: {
+      btnStyle: function() {
+        return {
+          width: this.size + 'px',
+          height: this.size + 'px'
+        };
+      }
+    },
+    methods: {
+      handleSwitchCamera: function() {
+        deviceStateInstance.switchCamera({
+          isFront: !deviceStateInstance.state.isFrontCamera
+        });
+      }
+    }
   };
 </script>
 

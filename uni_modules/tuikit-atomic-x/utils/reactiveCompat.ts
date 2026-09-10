@@ -1,21 +1,21 @@
 /**
- * Vue2/Vue3 响应式兼容工具
+ * 当前 Vue2 App 的响应式兼容工具
  * - Vue2: 使用 Vue.observable()
  * - Vue3: 使用 reactive() / ref()
  *
  * 实现要点：
- * - 静态 import 具名 API（ref/reactive）——当前项目其它 state 文件已大量使用，
- *   HBuilderX 对缺失导出会在编译期警告但不阻断，运行时若拿到 undefined 也不影响我们的探测
+ * - 不静态引用 Vue3 专有导出；Vue2.6 使用 observable
  * - 同时 import 默认导出（Vue 构造器）——Vue2 下用于访问 Vue.observable
  * - 所有 API 都做 typeof 校验，两边都能安全运行
  */
 
-// @ts-ignore
-import Vue, { ref as _maybeRef, reactive as _maybeReactive } from 'vue';
+import Vue from 'vue';
 
 const VueAny: any = Vue as any;
-const _ref: any = _maybeRef;
-const _reactive: any = _maybeReactive;
+// This app targets Vue2. Probe optional APIs on the constructor instead of
+// importing Vue3-only named exports (which do not exist in Vue 2.6).
+const _ref: any = VueAny && VueAny.ref;
+const _reactive: any = VueAny && VueAny.reactive;
 
 function _resolveReactive(): <T extends object>(obj: T) => T {
   // Vue3: 使用 named import 拿到的 reactive

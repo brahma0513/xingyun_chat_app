@@ -1,168 +1,105 @@
-import { ref, watch, nextTick } from 'vue';
-
-interface UseListTransformOptions {
-  getInputPanelHeight: () => number;
-  getInputToolbarHeight: () => number;
-  getLastMessageBottom: () => Promise<number>;
-  getMessageCount: () => number;
-  listRef: any;
-  threshold?: number; // 消息数量阈值，默认 10
-}
-
 /**
- * 消息列表智能 Transform Hook
- * 
+ * 消息列表智能 Transform (Vue2/Vue3 兼容版)
+ *
  * 功能：根据键盘/面板高度智能计算消息列表的上移距离
- * 
+ *
  * 场景：
  * 1. 消息超一屏：直接上移面板高度
  * 2. 消息不足一屏：智能计算，只上移必要距离
  * 3. 键盘打开时收到新消息：重新计算上移距离
  */
-export function useListTransform(options: UseListTransformOptions) {
-  const {
-    getInputPanelHeight,
-    getInputToolbarHeight,
-    getLastMessageBottom,
-    getMessageCount,
-    listRef,
-    threshold = 10
-  } = options;
+export function useListTransform(options: any) {
+  var getInputPanelHeight = options.getInputPanelHeight;
+  var getInputToolbarHeight = options.getInputToolbarHeight;
+  var getLastMessageBottom = options.getLastMessageBottom;
+  var getMessageCount = options.getMessageCount;
+  var listRef = options.listRef;
+  var threshold = options.threshold || 10;
 
-  const animation = uni.requireNativePlugin('animation');
+  var animation = uni.requireNativePlugin('animation');
 
-  // ==================== 状态 ====================
-  // 是否需要智能计算（键盘弹出时消息不足一屏时为 true，直到键盘关闭才重置）
-  const needSmartTransform = ref(false);
-  // 当前已应用的 translateY 值
-  const currentTranslateY = ref(0);
+  // 状态
+  var needSmartTransform = false;
+  var currentTranslateY = 0;
 
-  // ==================== 纯函数 ====================
-  
-  /**
-   * 计算需要上移的距离
-   * @param originalBottom 最后一条消息底部的原始位置（未 transform 前）
-   * @returns 需要上移的距离，0 表示不需要上移
-   */
-  const calcTranslateY = (originalBottom: number): number => {
-    const systemInfo = uni.getSystemInfoSync();
-    const screenHeight = systemInfo.screenHeight;
-    const panelHeight = getInputPanelHeight();
-    const toolbarHeight = getInputToolbarHeight();
-    
-    // 可用空间 = 屏幕高度 - 消息底部位置 - 工具栏高度
-    const availableSpace = screenHeight - originalBottom - toolbarHeight;
-    
-    // 面板高度超过可用空间时，需要上移差值
+  function calcTranslateY(originalBottom: number): number {
+    var systemInfo = uni.getSystemInfoSync();
+    var screenHeight = systemInfo.screenHeight;
+    var panelHeight = getInputPanelHeight();
+    var toolbarHeight = getInputToolbarHeight();
+    var availableSpace = screenHeight - originalBottom - toolbarHeight;
     if (panelHeight > availableSpace) {
-      const needed = panelHeight - availableSpace;
-      // transform 的语义是"补足面板遮挡的那部分"，所以上移量的物理上限就是 panelHeight：
-      // 上移 panelHeight 时，露出的底部区域正好被面板覆盖，用户看不到空隙。
-      // 一旦超过 panelHeight，多出来的部分不再被面板遮住 → 底部出现空白、内容被顶出屏幕。
-      //
-      // 会超上限是因为 originalBottom 可能失真：restoreOriginalBottom 只补偿了 transform 位移，
-      // 没有补偿 list 的滚动位移。发送长消息时 scrollToBottom 让最后一条消息贴到视口底部，
-      // 此时 currentBottom 已接近视口底，再加上 currentTranslateY 就得到一个虚高的 originalBottom，
-      // availableSpace 变成负数，needed = panelHeight + |availableSpace| 被放大。
+      var needed = panelHeight - availableSpace;
+      // transform 的语义是"补足面板遮挡的那部分"，上移量的物理上限就是 panelHeight：
+      // 上移 panelHeight 时露出的底部正好被面板覆盖；超过则底部出现空白、内容被顶出屏幕。
+      // originalBottom 可能因 list 滚动而失真（restoreOriginalBottom 只补偿了 transform，
+      // 未补偿滚动），发送长消息时会把 needed 放大，故此处收口。
       return needed > panelHeight ? panelHeight : needed;
     }
     return 0;
-  };
+  }
 
-  /**
-   * 还原原始位置（将 transform 后的位置还原为原始位置）
-   * @param currentBottom 当前获取到的位置（transform 后的屏幕位置）
-   * @returns 原始位置
-   */
-  const restoreOriginalBottom = (currentBottom: number): number => {
-    return currentBottom + currentTranslateY.value;
-  };
+  function restoreOriginalBottom(currentBottom: number): number {
+    return currentBottom + currentTranslateY;
+  }
 
-  // ==================== 副作用函数 ====================
-  
-  /**
-   * 执行 transform 动画
-   */
-  const applyTransform = (translateY: number) => {
-    currentTranslateY.value = translateY;
-    nextTick(() => {
-      if (!listRef.value) return;
-      animation.transition(
-        listRef.value,
-        {
-          styles: { transform: `translateY(-${translateY}px)` },
-          duration: 200,
-          timingFunction: 'ease-out'
-        }
-      );
-    });
-  };
+  function applyTransform(translateY: number) {
+    currentTranslateY = translateY;
+    var el = typeof listRef === 'function' ? listRef() : listRef;
+    if (!el) return;
+    animation.transition(
+      el,
+      {
+        styles: { transform: 'translateY(-' + translateY + 'px)' },
+        duration: 200,
+        timingFunction: 'ease-out'
+      }
+    );
+  }
 
-  /**
-   * 重置所有状态
-   */
-  const resetState = () => {
-    needSmartTransform.value = false;
-    currentTranslateY.value = 0;
+  function resetState() {
+    needSmartTransform = false;
+    currentTranslateY = 0;
     applyTransform(0);
-  };
+  }
 
-  // ==================== 业务函数 ====================
-  
-  /**
-   * 处理面板高度变化
-   * @param isOpening 是否是从关闭到打开（oldHeight === 0）
-   */
-  const onPanelHeightChange = async (isOpening: boolean) => {
-    const panelHeight = getInputPanelHeight();
-    
-    // 面板关闭
+  function onPanelHeightChange(isOpening: boolean) {
+    var panelHeight = getInputPanelHeight();
     if (panelHeight === 0) {
       resetState();
       return;
     }
-
-    // 首次打开面板时，根据消息数量决定是否需要智能计算
     if (isOpening) {
-      needSmartTransform.value = getMessageCount() < threshold;
+      needSmartTransform = getMessageCount() < threshold;
     }
-
-    if (needSmartTransform.value) {
-      // 智能计算模式
-      const currentBottom = await getLastMessageBottom();
-      // 首次打开时 currentTranslateY 为 0，所以 originalBottom === currentBottom
-      const originalBottom = restoreOriginalBottom(currentBottom);
-      const translateY = calcTranslateY(originalBottom);
-      applyTransform(translateY);
+    if (needSmartTransform) {
+      getLastMessageBottom().then(function(currentBottom: number) {
+        var originalBottom = restoreOriginalBottom(currentBottom);
+        var translateY = calcTranslateY(originalBottom);
+        applyTransform(translateY);
+      });
     } else {
-      // 直接上移面板高度
       applyTransform(panelHeight);
     }
-  };
+  }
 
-  /**
-   * 处理新消息到达（仅在 needSmartTransform 为 true 时需要调用）
-   */
-  const onNewMessage = async () => {
-    if (!needSmartTransform.value) return;
+  function onNewMessage() {
+    if (!needSmartTransform) return;
     if (getInputPanelHeight() === 0) return;
-
-    // 等待 DOM 更新和滚动完成
-    await new Promise(resolve => setTimeout(resolve, 150));
-    
-    const currentBottom = await getLastMessageBottom();
-    const originalBottom = restoreOriginalBottom(currentBottom);
-    const translateY = calcTranslateY(originalBottom);
-    applyTransform(translateY);
-  };
+    setTimeout(function() {
+      getLastMessageBottom().then(function(currentBottom: number) {
+        var originalBottom = restoreOriginalBottom(currentBottom);
+        var translateY = calcTranslateY(originalBottom);
+        applyTransform(translateY);
+      });
+    }, 150);
+  }
 
   return {
-    // 状态（只读）
-    needSmartTransform,
-    currentTranslateY,
-    // 业务函数
-    onPanelHeightChange,
-    onNewMessage,
-    resetState
+    get needSmartTransform() { return needSmartTransform; },
+    get currentTranslateY() { return currentTranslateY; },
+    onPanelHeightChange: onPanelHeightChange,
+    onNewMessage: onNewMessage,
+    resetState: resetState
   };
 }

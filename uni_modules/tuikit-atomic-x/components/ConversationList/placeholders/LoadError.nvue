@@ -5,10 +5,16 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import type { LoadErrorPlaceholderProps } from '../../../types/conversationList'
-
-defineProps<LoadErrorPlaceholderProps>()
+<script>
+export default {
+  name: 'LoadError',
+  props: {
+    error: {
+      type: Object,
+      default: null
+    }
+  }
+}
 </script>
 
 <style>

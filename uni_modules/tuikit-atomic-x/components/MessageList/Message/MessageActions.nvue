@@ -1,544 +1,336 @@
 <template>
   <view class="msg-actions" @tap="handleMaskTap">
-    <view 
-      ref="panelRef"
-      class="msg-actions__panel"
-      :style="panelStyle"
-      @tap.stop
-    >
-      <view 
-        v-if="canCopy"
-        class="msg-actions__item"
-        @tap="handleCopy"
-      >
-        <image class="msg-actions__icon" :src="copyIcon" mode="aspectFit"></image>
+    <view ref="panelRef" class="msg-actions__panel" :style="panelStyle" @tap.stop>
+      <view v-if="canCopy" class="msg-actions__item" @tap="handleCopy">
+        <image class="msg-actions__icon" :src="copyIconSrc" mode="aspectFit"></image>
         <text class="msg-actions__text">复制</text>
       </view>
-      
-      <view 
-        class="msg-actions__item"
-        @tap="handleDelete"
-      >
-        <image class="msg-actions__icon" :src="deleteIcon" mode="aspectFit"></image>
+      <view class="msg-actions__item" @tap="handleDelete">
+        <image class="msg-actions__icon" :src="deleteIconSrc" mode="aspectFit"></image>
         <text class="msg-actions__text">删除</text>
       </view>
-      
-      <view 
-        v-if="canConvertVoice"
-        class="msg-actions__item"
-        @tap="handleVoiceToText"
-      >
-        <image class="msg-actions__icon" :src="voiceToTextIcon" mode="aspectFit"></image>
+      <view v-if="canConvertVoice" class="msg-actions__item" @tap="handleVoiceToText">
+        <image class="msg-actions__icon" :src="voiceToTextIconSrc" mode="aspectFit"></image>
         <text class="msg-actions__text">{{ voiceActionLabel }}</text>
       </view>
-      
-      <view 
-        v-if="canRecall"
-        class="msg-actions__item"
-        @tap="handleRecall"
-      >
-        <image class="msg-actions__icon" :src="recallIcon" mode="aspectFit"></image>
+      <view v-if="canRecall" class="msg-actions__item" @tap="handleRecall">
+        <image class="msg-actions__icon" :src="recallIconSrc" mode="aspectFit"></image>
         <text class="msg-actions__text">撤回</text>
       </view>
     </view>
-    
     <view class="msg-actions__arrow" :style="arrowStyle"></view>
   </view>
 </template>
 
-<script setup>
-import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
+<script>
 import { MessageStatus, MessageType } from '../../../types/message'
 import { useMessageActionState } from '../../../state/MessageActionState'
 import { throttle } from '../../../utils/lodash'
 
-import copyIcon from '../assets/msg_copy.png'
-import deleteIcon from '../assets/msg_delete.png'
-import recallIcon from '../assets/msg_recall.png'
-import voiceToTextIcon from '../assets/msg_voice_to_text.png'
-
-// 箭头几何参数（rpx，与 .msg-actions__arrow width/height 保持一致）
-const ARROW_SIZE = 24
-// 面板与气泡的间距（rpx）
-const GAP = 20
-// 箭头距离面板左右边缘的最小内边距，避免视觉脱离
-const ARROW_INSET = 16
-
-let deleteAction;
-let revokeAction;
-let convertVoiceToText;
-let destroyStore;
-
-const props = defineProps({
-  message: {
-    type: Object,
-    required: true
-  },
-  actions: {
-    type: Array,
-    default: () => []
-  }
-})
-
-const emit = defineEmits(['close', 'action'])
-
-const panelRef = ref(null)
-const triggerPosition = ref({ x: 0, y: 0 })
-// phase: 'measure' 先渲染到屏幕外测量真实尺寸；'ready' 测量完成后定位显示
-const phase = ref('measure')
-// 面板是否显示在气泡下方（顶部空间不够时）
-const showBelow = ref(false)
-const isCentered = ref(false)
-// 测量得到的真实面板尺寸（rpx）
-const panelWidthRpx = ref(0)
-const panelHeightRpx = ref(0)
-
-onMounted(() => {
-  const obj = useMessageActionState({ message: props.message })
-  deleteAction = obj.delete
-  revokeAction = obj.revoke
-  convertVoiceToText = obj.convertVoiceToText
-  destroyStore = obj.destroyStore
-})
-
-onUnmounted(() => {
-  destroyStore && destroyStore()
-})
-
-// 通用的关闭处理函数，针对 iOS 14 进行特殊处理
-const safeClose = () => {
-  // #ifdef APP-IOS
-  setTimeout(() => {
-    emit('close')
-  }, 300)
-  // #endif
-  
-  // #ifndef APP-IOS
-  emit('close')
-  // #endif
-}
-
-const canCopy = computed(() => {
-  return props.message.messageType === MessageType.TEXT && 
-         props.message.messagePayload?.text
-})
-
-const canRecall = computed(() => {
-  if (!props.message.isSentBySelf) {
-    return false
-  }
-  
-  if (props.message.status === MessageStatus.REVOKED || 
-      props.message.status === MessageStatus.DELETED) {
-    return false
-  }
-  
-  if (props.message.timestamp) {
-    const now = Math.floor(Date.now() / 1000)
-    const messageTime = props.message.timestamp
-    const timeDiff = now - messageTime
-    return timeDiff <= 120
-  }
-  
-  return false
-})
-
-// 仅 SOUND 类型消息可触发"转文字"操作
-const canConvertVoice = computed(() => {
-  return props.message.messageType === MessageType.AUDIO
-})
-
-/**
- * 语音转文字按钮的 label 与是否处于"隐藏文字"模式
- *
- * 判定规则（与 AudioMessage 内部 `asrText && showConvertedText` 展示条件保持一致）：
- * - 当前消息已有 asrText，且 AudioMessage 当前正在展示该文本 → 按钮显示"隐藏文字"，点击触发隐藏
- * - 否则 → 按钮显示"转文字"，点击触发转换 / 重新展示已有 asrText
- *
- * 可见态来源（按优先级）：
- * 1. 运行时 Map `uni.__audioConvertVisibleMap__`：当前会话内已挂载的 AudioMessage 写入，最准确
- * 2. 本地存储 `tuikit_audio_convert_visible_v1`：跨会话/重启 App 持久化的"用户主动隐藏"记录
- * 3. 默认 true：均无记录时按 AudioMessage 中 `showConvertedText` 默认值
- */
-const STORAGE_KEY = 'tuikit_audio_convert_visible_v1'
-
-const voiceTextHasContent = computed(() => {
-  const text = props.message && props.message.messagePayload && props.message.messagePayload.asrText
-  return !!text
-})
-
-const voiceTextVisible = computed(() => {
-  if (!voiceTextHasContent.value) return false
-  const msgID = props.message.msgID
-
-  // 1. 运行时 Map（同会话最准）
-  const map = uni.__audioConvertVisibleMap__
-  if (map && map.has(msgID)) {
-    return map.get(msgID) === true
-  }
-
-  // 2. 本地存储（跨会话持久化"隐藏"记录；仅记录 false，缺省视为 true）
-  try {
-    const raw = uni.getStorageSync(STORAGE_KEY)
-    let store = null
-    if (raw && typeof raw === 'object') {
-      store = raw
-    } else if (typeof raw === 'string' && raw) {
-      store = JSON.parse(raw)
-    }
-    if (store && store[msgID] === false) {
-      return false
-    }
-  } catch (e) {}
-
-  // 3. 默认可见
-  return true
-})
-
-const voiceActionLabel = computed(() => {
-  return voiceTextVisible.value ? '隐藏文字' : '转文字'
-})
-
-/**
- * 视口安全区度量（rpx）—— 一处算好，panelTopRpx / measureAndPosition 复用
- */
-const viewportRpx = () => {
-  const si = uni.getSystemInfoSync()
-  const sw = si.windowWidth || 375
-  const sh = si.windowHeight || 667
-  const navH = si.platform === 'android' ? 48 : 44
-  const safeTop = si.safeArea?.top || 0
-  const safeBottom = (sh - (si.safeArea?.bottom || sh)) || 0
-  return {
-    minTop: (safeTop + navH + 8) / sw * 750,
-    maxBottom: (sh - safeBottom - 8) / sw * 750,
-  }
-}
-
-/**
- * 面板最终 top（rpx）—— 唯一 source of truth
- * panelStyle 和 arrowStyle 都读它，箭头贴 panel 边缘算位置 → 物理上不可能分离
- */
-const panelTopRpx = computed(() => {
-  const tp = triggerPosition.value
-  const ph = panelHeightRpx.value
-  const want = showBelow.value ? tp.y + tp.messageHeight + GAP : tp.y - ph - GAP
-  if (ph <= 0) return want
-  const { minTop, maxBottom } = viewportRpx()
-  // 长消息占满屏：上下都放不下 → 居中
-  if (isCentered.value) return Math.round((minTop + maxBottom - ph) / 2)
-  return Math.max(minTop, Math.min(want, maxBottom - ph))
-})
-
-/**
- * 面板样式
- * - phase='measure'：渲染到屏幕外（top: -9999rpx, opacity: 0）以便测量真实尺寸
- * - phase='ready'：top 取 panelTopRpx（已含 clamp / 居中）
- */
-const panelStyle = computed(() => {
-  const tp = triggerPosition.value
-  if (phase.value === 'measure') {
-    return { top: '-9999rpx', left: '0rpx', opacity: 0 }
-  }
-  if (!tp.x || !tp.y) return { visibility: 'hidden' }
-  const pos = { top: `${panelTopRpx.value}rpx` }
-  if (isCentered.value && panelWidthRpx.value > 0) {
-    // 居中显示时水平也居中（屏幕宽固定 750rpx）
-    pos.left = `${Math.round((750 - panelWidthRpx.value) / 2)}rpx`
-  } else if (tp.isSentBySelf) {
-    pos.right = `${tp.x}rpx`
-  } else {
-    pos.left = `${tp.x}rpx`
-  }
-  return pos
-})
-
-/**
- * 箭头样式
- * - 未 ready 时隐藏，避免未 clamp 的位置先闪现
- * - left：默认指向气泡中心，用真实 panelWidth 做边界 clamp（防脱离面板）
- * - top：让箭头跨在面板边缘上（-ARROW_SIZE/2），露出一半形成视觉三角
- */
-const arrowStyle = computed(() => {
-  if (phase.value !== 'ready') return { visibility: 'hidden' }
-  // 居中显示时没有可指的气泡边，箭头隐藏
-  if (isCentered.value) return { visibility: 'hidden' }
-  const tp = triggerPosition.value
-  if (!tp.x || !tp.y) return { visibility: 'hidden' }
-
-  const si = uni.getSystemInfoSync()
-  const sw = si.windowWidth || 375
-
-  // 气泡中心 rpx 坐标（px → rpx），减去箭头一半宽度让箭头视觉居中
-  let arrowLeft = (tp.messageX + tp.messageWidth / 2) / sw * 750 - ARROW_SIZE / 2
-
-  // 用真实测量的 panelWidth 做 clamp（屏幕宽统一为 750rpx，不用 screenHeight）
-  const pw = panelWidthRpx.value
-  if (pw > 0) {
-    let panelFinalLeft
-    if (tp.isSentBySelf) {
-      // 面板用 right 定位：panelFinalLeft = 750 - right - panelWidth
-      panelFinalLeft = 750 - tp.x - pw
-    } else {
-      panelFinalLeft = tp.x
-    }
-    const panelFinalRight = panelFinalLeft + pw
-    const minLeft = panelFinalLeft + ARROW_INSET
-    const maxLeft = panelFinalRight - ARROW_SIZE - ARROW_INSET
-    if (arrowLeft < minLeft) arrowLeft = minLeft
-    if (arrowLeft > maxLeft) arrowLeft = maxLeft
-  }
-
-  // top 直接贴 panel 边缘算（读 panelTopRpx 这一唯一 source of truth）
-  // → panel 被 clamp 时箭头自动跟随，不可能分离
-  const style = { left: `${arrowLeft}rpx`, visibility: 'visible' }
-  if (showBelow.value) {
-    // 面板在气泡下方：箭头跨在面板上边缘
-    style.top = `${panelTopRpx.value - ARROW_SIZE / 2}rpx`
-  } else {
-    // 面板在气泡上方：箭头跨在面板下边缘
-    style.top = `${panelTopRpx.value + panelHeightRpx.value - ARROW_SIZE / 2}rpx`
-  }
-  return style
-})
-
-const handleMaskTap = () => {
-  safeClose()
-}
-
+var ARROW_SIZE = 24
+var GAP = 20
 // 节流窗口：1000ms 足以覆盖 iOS 关闭动画 300ms + 用户连点的反应间隔，避免重复网络请求 / 重复 emit
-const ACTION_THROTTLE_WAIT = 1000
+var ACTION_THROTTLE_WAIT = 1000
 
-const handleCopy = throttle(() => {
-  if (props.message.messagePayload?.text) {
-    uni.setClipboardData({
-      data: props.message.messagePayload.text,
-      success: () => {
-        uni.showToast({
-          title: '已复制',
-          icon: 'none'
-        })
-      }
-    })
-  }
-  emit('action', { key: 'copy', text: '复制' })
-  safeClose()
-}, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
-
-const handleDelete = throttle(async () => {
-  try {
-    await deleteAction()
-    safeClose()
-  } catch (error) {
-    uni.showToast({
-      title: '删除失败',
-      icon: 'none',
-      duration: 2000
-    })
-    safeClose()
-  }
-}, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
-
-const handleRecall = throttle(async () => {
-  try {
-    await revokeAction()
-    safeClose()
-  } catch (error) {
-    console.warn('revoke failed: ', error)
-    uni.showToast({
-      title: '撤回失败',
-      icon: 'none',
-      duration: 2000
-    })
-    safeClose()
-  }
-}, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
-
-/**
- * 语音转文字 / 隐藏文字（toggle）
- *
- * 行为：
- * - 当前未展示 asrText（首次转换 或 已隐藏）：触发转换流程，AudioMessage 进入 loading 态
- *   * 若已有 asrText（之前转过），调用 Native 一般会立即返回缓存结果，AudioMessage 通过 watch 自动展示
- * - 当前正展示 asrText：广播 audioConvertHide，AudioMessage 收到后将 showConvertedText 置 false 隐藏
- *
- * 失败时广播 audioConvertingError 释放 loading。
- */
-const handleVoiceToText = throttle(() => {
-  const msgID = props.message.msgID
-  // 关闭面板
-  emit('action', { key: voiceTextVisible.value ? 'voiceTextHide' : 'voiceToText', text: voiceActionLabel.value })
-  safeClose()
-
-  // 已展示 → 触发隐藏
-  if (voiceTextVisible.value) {
-    uni.$emit('audioConvertHide', { msgID })
-    return
-  }
-
-  // 未展示 → 触发转换 / 重新展示
-  uni.$emit('audioConvertingStart', { msgID })
-
-  // language 暂用默认 'zh'，后续可由 props / 配置注入
-  const language = 'zh'
-  if (!convertVoiceToText) {
-    uni.$emit('audioConvertingError', { msgID })
-    uni.showToast({ title: '转换失败', icon: 'none' })
-    return
-  }
-  convertVoiceToText(language).catch((err) => {
-    console.error('[MessageActions] convertVoiceToText failed:', err)
-    uni.$emit('audioConvertingError', { msgID })
-    let toastTitle = '转换失败'
-    if (err && err.code === 140008) {
-      toastTitle = '当前 SDKAppID 尚未开通语音转文字（ASR）服务'
-    } else if (err && err.message) {
-      toastTitle = err.message
+export default {
+  name: 'MessageActions',
+  props: {
+    message: { type: Object, required: true },
+    actions: { type: Array, default: function() { return [] } }
+  },
+  data() {
+    return {
+      triggerPosition: { x: 0, y: 0 },
+      phase: 'measure',
+      showBelow: false,
+      isCentered: false,
+      panelHeightRpx: 0,
+      panelLeftRpx: 0,
+      panelWidthRpx: 0,
+      actionState: null,
+      copyIconSrc: '/uni_modules/tuikit-atomic-x/static/assets/message-list/msg_copy.png',
+      deleteIconSrc: '/uni_modules/tuikit-atomic-x/static/assets/message-list/msg_delete.png',
+      recallIconSrc: '/uni_modules/tuikit-atomic-x/static/assets/message-list/msg_recall.png',
+      voiceToTextIconSrc: '/uni_modules/tuikit-atomic-x/static/assets/message-list/msg_voice_to_text.png'
     }
-    uni.showToast({ title: toastTitle, icon: 'none' })
-  })
-}, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
-
-/**
- * 测量真实 panel 尺寸 + 判定上下方向
- * 用 nvue 的 dom.getComponentRect 获取面板渲染后的实际宽高
- */
-const measureAndPosition = () => {
-  const panelEl = panelRef.value
-  if (!panelEl) {
-    phase.value = 'ready'
-    return
-  }
-  // #ifdef APP-PLUS
-  try {
-    const dom = uni.requireNativePlugin('dom')
-    dom.getComponentRect(panelEl, (result) => {
-      if (result && result.size) {
-        const si = uni.getSystemInfoSync()
-        const sw = si.windowWidth || 375
-        panelWidthRpx.value = Math.round(result.size.width / sw * 750)
-        panelHeightRpx.value = Math.round(result.size.height / sw * 750)
+  },
+  computed: {
+    canCopy() { return this.message.messageType === MessageType.TEXT && this.message.messagePayload && this.message.messagePayload.text },
+    canRecall() {
+      if (!this.message.isSentBySelf) return false
+      if (this.message.status === MessageStatus.REVOKED || this.message.status === MessageStatus.DELETED) return false
+      if (this.message.timestamp) { var diff = Math.floor(Date.now() / 1000) - this.message.timestamp; return diff <= 120 }
+      return false
+    },
+    canConvertVoice() { return this.message.messageType === MessageType.AUDIO },
+    /**
+     * 语音转文字按钮的 label 与是否处于"隐藏文字"模式
+     * 判定：当前消息已有 asrText 且 AudioMessage 当前展示该文本 → "隐藏文字"，否则 "转文字"
+     * AudioMessage 通过模块级 Map __audioConvertVisibleMap__ 同步当前 showConvertedText 状态，
+     * 默认（未写入 Map）视为可见 true（与 AudioMessage 中 showConvertedText 默认 true 一致）
+     */
+    voiceTextHasContent() {
+      return !!(this.message && this.message.messagePayload && this.message.messagePayload.asrText)
+    },
+    voiceTextVisible() {
+      if (!this.voiceTextHasContent) return false
+      var msgID = this.message.msgID
+      // 1. 运行时 Map（同会话最准）
+      var map = uni.__audioConvertVisibleMap__
+      if (map && typeof map.has === 'function' && map.has(msgID)) {
+        return map.get(msgID) === true
       }
-      // 判定方向：用"panel 矩形能否完整放入视口"（inSafeArea）
-      // 长消息滚到中间时 tp.y 为负，旧的"顶部剩余空间"算法会误判 → panel 跑到屏幕外
-      if (panelHeightRpx.value <= 0) {
-        phase.value = 'ready'
+      // 2. 本地存储（跨会话持久化"隐藏"记录；仅记录 false，缺省视为 true）
+      try {
+        var raw = uni.getStorageSync('tuikit_audio_convert_visible_v1')
+        var store = null
+        if (raw && typeof raw === 'object') {
+          store = raw
+        } else if (typeof raw === 'string' && raw) {
+          store = JSON.parse(raw)
+        }
+        if (store && store[msgID] === false) {
+          return false
+        }
+      } catch (e) {}
+      // 3. 默认可见
+      return true
+    },
+    voiceActionLabel() {
+      return this.voiceTextVisible ? '隐藏文字' : '转文字'
+    },
+    /**
+     * 视口安全区度量（rpx）—— 一处算好，panelTopRpx / _measureAndPosition 复用
+     */
+    viewportMinRpx() {
+      var si = uni.getSystemInfoSync()
+      var sw = si.windowWidth || 375
+      var sh = si.screenHeight || si.windowHeight || 667
+      var navH = si.platform === 'android' ? 48 : 44
+      var safeTop = (si.safeArea && si.safeArea.top) ? si.safeArea.top : 0
+      return (safeTop + navH + 8) / sw * 750
+    },
+    viewportMaxRpx() {
+      var si = uni.getSystemInfoSync()
+      var sw = si.windowWidth || 375
+      var sh = si.screenHeight || si.windowHeight || 667
+      var safeBottom = (si.safeArea && si.safeArea.bottom) ? (sh - si.safeArea.bottom) : 0
+      return (sh - safeBottom - 8) / sw * 750
+    },
+    /**
+     * 面板最终 top（rpx）—— 唯一 source of truth
+     * panelStyle 和 arrowStyle 都读它，箭头贴 panel 边缘算位置 → 物理上不可能分离
+     */
+    panelTopRpx() {
+      var tp = this.triggerPosition
+      var ph = this.panelHeightRpx
+      var want = this.showBelow ? (tp.y + tp.messageHeight + GAP) : (tp.y - ph - GAP)
+      if (ph <= 0) return want
+      var minTop = this.viewportMinRpx
+      var maxBottom = this.viewportMaxRpx
+      // 长消息占满屏：上下都放不下 → 居中
+      if (this.isCentered) return Math.round((minTop + maxBottom - ph) / 2)
+      var result = want
+      if (result < minTop) result = minTop
+      if (result > maxBottom - ph) result = maxBottom - ph
+      return Math.round(result)
+    },
+    panelStyle() {
+      var tp = this.triggerPosition
+      // phase=measure: 渲染在屏幕外以便测量真实高度
+      if (this.phase === 'measure') {
+        return { top: '-9999rpx', left: '0rpx', opacity: 0 }
+      }
+      // phase=ready: 定位到正确位置
+      if (!tp.x || !tp.y) return { visibility: 'hidden' }
+      var pos = { top: this.panelTopRpx + 'rpx' }
+      if (this.isCentered && this.panelWidthRpx > 0) {
+        // 居中显示时水平也居中（屏幕宽固定 750rpx）
+        pos.left = Math.round((750 - this.panelWidthRpx) / 2) + 'rpx'
+      } else if (tp.isSentBySelf) {
+        pos.right = tp.x + 'rpx'
+      } else {
+        pos.left = tp.x + 'rpx'
+      }
+      return pos
+    },
+    arrowStyle() {
+      if (this.phase !== 'ready') return { visibility: 'hidden' }
+      // 居中显示时没有可指的气泡边，箭头隐藏
+      if (this.isCentered) return { visibility: 'hidden' }
+      var tp = this.triggerPosition
+      if (!tp.x || !tp.y) return { visibility: 'hidden' }
+      var si = uni.getSystemInfoSync()
+      var sw = si.windowWidth || 375
+      var arrowLeft = (tp.messageX + tp.messageWidth / 2) / sw * 750 - ARROW_SIZE / 2
+      // 计算面板最终的左右边界（rpx）
+      var pw = this.panelWidthRpx
+      if (pw > 0) {
+        var panelFinalLeft
+        if (tp.isSentBySelf) {
+          // 面板用 right 定位: panelFinalLeft = 屏幕宽(750) - right - panelWidth
+          panelFinalLeft = 750 - tp.x - pw
+        } else {
+          panelFinalLeft = tp.x
+        }
+        var panelFinalRight = panelFinalLeft + pw
+        var inset = 16
+        var minLeft = panelFinalLeft + inset
+        var maxLeft = panelFinalRight - ARROW_SIZE - inset
+        if (arrowLeft < minLeft) arrowLeft = minLeft
+        if (arrowLeft > maxLeft) arrowLeft = maxLeft
+      }
+      // top 直接贴 panel 边缘算（读 panelTopRpx 这一唯一 source of truth）
+      var style = { left: arrowLeft + 'rpx', visibility: 'visible' }
+      if (this.showBelow) {
+        // 面板在气泡下方：箭头跨在面板上边缘
+        style.top = (this.panelTopRpx - ARROW_SIZE / 2) + 'rpx'
+      } else {
+        // 面板在气泡上方：箭头跨在面板下边缘
+        style.top = (this.panelTopRpx + this.panelHeightRpx - ARROW_SIZE / 2) + 'rpx'
+      }
+      return style
+    }
+  },
+  created() {
+    // 防抖包装 4 个动作按钮：leading 立即执行，1000ms 内的连点全部忽略
+    // 每个组件实例独立 throttle，组件销毁时自然回收
+    var self = this
+    this.handleCopy = throttle(function() { self._handleCopyImpl() }, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
+    this.handleDelete = throttle(function() { self._handleDeleteImpl() }, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
+    this.handleRecall = throttle(function() { self._handleRecallImpl() }, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
+    this.handleVoiceToText = throttle(function() { self._handleVoiceToTextImpl() }, ACTION_THROTTLE_WAIT, { leading: true, trailing: false })
+  },
+  mounted() {
+    this.actionState = useMessageActionState({ message: this.message })
+  },
+  beforeDestroy() { if (this.actionState) this.actionState.destroyStore() },
+  beforeUnmount() { if (this.actionState) this.actionState.destroyStore() },
+  methods: {
+    setTriggerPosition(position) {
+      this.triggerPosition = {
+        x: position.x, y: position.y,
+        messageX: position.messageX, messageWidth: position.messageWidth,
+        messageHeight: position.messageHeight, isSentBySelf: position.isSentBySelf
+      }
+      // phase 1: 渲染面板到屏幕外，等测量完高度后定位
+      this.phase = 'measure'
+      var self = this
+      this.$nextTick(function() {
+        setTimeout(function() {
+          self._measureAndPosition()
+        }, 30)
+      })
+    },
+    _measureAndPosition() {
+      var self = this
+      var panelEl = this.$refs.panelRef
+      if (!panelEl) { self.phase = 'ready'; return }
+      var dom = uni.requireNativePlugin('dom')
+      dom.getComponentRect(panelEl, function(result) {
+        if (result && result.result) {
+          var si = uni.getSystemInfoSync()
+          var sw = si.windowWidth || 375
+          self.panelHeightRpx = Math.round(result.size.height / sw * 750)
+          self.panelLeftRpx = Math.round(result.size.left / sw * 750)
+          self.panelWidthRpx = Math.round(result.size.width / sw * 750)
+        }
+        // 方向判定：用「panel 矩形能否完整放入视口」（inSafeArea）
+        // 长消息滚到中间时 tp.y 为负，旧的「顶部剩余空间」算法会误判 → panel 跑到屏幕外
+        if (self.panelHeightRpx <= 0) { self.phase = 'ready'; return }
+        var tp = self.triggerPosition
+        var minTop = self.viewportMinRpx
+        var maxBottom = self.viewportMaxRpx
+        var ph = self.panelHeightRpx
+        var inSafeArea = function(top) { return top >= minTop && top + ph <= maxBottom }
+        var canBelow = inSafeArea(tp.y + tp.messageHeight + GAP)
+        var canAbove = inSafeArea(tp.y - GAP - ph)
+        if (canBelow) {
+          // 优先下方（更靠近气泡）
+          self.showBelow = true
+          self.isCentered = false
+        } else if (canAbove) {
+          self.showBelow = false
+          self.isCentered = false
+        } else {
+          // 长消息占满全屏：上下都放不下 → 居中显示，箭头隐藏
+          self.isCentered = true
+        }
+        // phase 2: 切换到正确位置
+        self.phase = 'ready'
+      })
+    },
+    safeClose() {
+      // #ifdef APP-IOS
+      var self = this; setTimeout(function() { self.$emit('close') }, 300)
+      // #endif
+      // #ifndef APP-IOS
+      this.$emit('close')
+      // #endif
+    },
+    handleMaskTap() { this.safeClose() },
+    _handleCopyImpl() {
+      if (this.message.messagePayload && this.message.messagePayload.text) {
+        uni.setClipboardData({ data: this.message.messagePayload.text, success: function() { uni.showToast({ title: '已复制', icon: 'none' }) } })
+      }
+      this.$emit('action', { key: 'copy', text: '复制' }); this.safeClose()
+    },
+    async _handleDeleteImpl() {
+      try { await this.actionState.delete(); this.safeClose() }
+      catch (e) { uni.showToast({ title: '删除失败', icon: 'none', duration: 2000 }); this.safeClose() }
+    },
+    async _handleRecallImpl() {
+      try { await this.actionState.revoke(); this.safeClose() }
+      catch (e) { uni.showToast({ title: '撤回失败', icon: 'none', duration: 2000 }); this.safeClose() }
+    },
+    /**
+     * 语音转文字 / 隐藏文字（toggle，与 Vue3 行为一致）
+     * - 当前未展示 asrText：触发转换流程（若已有缓存 SDK 一般立即返回）
+     * - 当前正展示 asrText：广播 audioConvertHide，AudioMessage 收到后置 showConvertedText=false
+     */
+    _handleVoiceToTextImpl() {
+      var msgID = this.message.msgID
+      var visible = this.voiceTextVisible
+      this.$emit('action', { key: visible ? 'voiceTextHide' : 'voiceToText', text: this.voiceActionLabel })
+      this.safeClose()
+
+      if (visible) {
+        uni.$emit('audioConvertHide', { msgID: msgID })
         return
       }
-      const tp = triggerPosition.value
-      const { minTop, maxBottom } = viewportRpx()
-      const inSafeArea = (top) =>
-        top >= minTop && top + panelHeightRpx.value <= maxBottom
-      const canBelow = inSafeArea(tp.y + tp.messageHeight + GAP)
-      const canAbove = inSafeArea(tp.y - GAP - panelHeightRpx.value)
-      if (canBelow) {
-        // 优先下方（更靠近气泡）
-        showBelow.value = true
-        isCentered.value = false
-      } else if (canAbove) {
-        showBelow.value = false
-        isCentered.value = false
-      } else {
-        // 长消息占满全屏：上下都放不下 → 居中显示，箭头隐藏
-        isCentered.value = true
+
+      uni.$emit('audioConvertingStart', { msgID: msgID })
+
+      var language = 'zh'
+      if (!this.actionState || !this.actionState.convertVoiceToText) {
+        uni.$emit('audioConvertingError', { msgID: msgID })
+        uni.showToast({ title: '转换失败', icon: 'none' })
+        return
       }
-      phase.value = 'ready'
-    })
-    return
-  } catch (e) {
-    console.error('[MessageActions] measureAndPosition failed:', e)
+      this.actionState.convertVoiceToText(language).catch(function(err) {
+        console.error('[MessageActions] convertVoiceToText failed:', err)
+        uni.$emit('audioConvertingError', { msgID: msgID })
+        var toastTitle = '转换失败'
+        if (err && err.code === 140008) {
+          toastTitle = '当前 SDKAppID 尚未开通语音转文字（ASR）服务'
+        } else if (err && err.message) {
+          toastTitle = err.message
+        }
+        uni.showToast({ title: toastTitle, icon: 'none' })
+      })
+    }
   }
-  // #endif
-  // 兜底：直接显示
-  phase.value = 'ready'
 }
-
-const setTriggerPosition = (position) => {
-  triggerPosition.value = {
-    x: position.x,
-    y: position.y,
-    messageX: position.messageX,
-    messageWidth: position.messageWidth,
-    messageHeight: position.messageHeight,
-    isSentBySelf: position.isSentBySelf,
-  }
-  // phase 1: 渲染到屏幕外测量真实尺寸
-  phase.value = 'measure'
-  nextTick(() => {
-    setTimeout(() => {
-      measureAndPosition()
-    }, 30)
-  })
-}
-
-defineExpose({
-  setTriggerPosition
-})
 </script>
 
 <style>
-.msg-actions {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.01);
-  z-index: 999;
-}
-
-.msg-actions__panel {
-  position: absolute;
-  flex-direction: row;
-  background-color: #FFFFFF;
-  border-radius: 12rpx;
-  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.25);
-  padding: 33rpx 0 22rpx;
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-  left: auto;
-  right: auto;
-}
-
-.msg-actions__item {
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 114rpx;
-  margin: 0rpx 16rpx;
-}
-
-.msg-actions__item:first-child {
-  margin-left: 0rpx;
-}
-
-.msg-actions__item:last-child {
-  margin-right: 0rpx;
-}
-
-.msg-actions__item:active {
-  opacity: 0.6;
-}
-
-.msg-actions__icon {
-  width: 36rpx;
-  height: 36rpx;
-  margin-bottom: 10rpx;
-}
-
-.msg-actions__text {
-  font-size: 20rpx;
-  color: rgba(0, 0, 0, 0.55);
-  text-align: center;
-}
-
-.msg-actions__arrow {
-  position: absolute;
-  width: 24rpx;
-  height: 24rpx;
-  background-color: #FFFFFF;
-  transform: rotate(45deg);
-  z-index: 1001;
-}
+.msg-actions { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255, 255, 255, 0.01); z-index: 999; }
+.msg-actions__panel { position: absolute; flex-direction: row; background-color: #FFFFFF; border-radius: 12rpx; box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.25); padding: 33rpx 0 22rpx; z-index: 1000; justify-content: center; align-items: center; }
+.msg-actions__item { flex-direction: column; align-items: center; justify-content: center; min-width: 114rpx; margin: 0rpx 16rpx; }
+.msg-actions__item:first-child { margin-left: 0rpx; }
+.msg-actions__item:last-child { margin-right: 0rpx; }
+.msg-actions__item:active { opacity: 0.6; }
+.msg-actions__icon { width: 36rpx; height: 36rpx; margin-bottom: 10rpx; }
+.msg-actions__text { font-size: 20rpx; color: rgba(0, 0, 0, 0.55); text-align: center; }
+.msg-actions__arrow { position: absolute; width: 24rpx; height: 24rpx; background-color: #FFFFFF; transform: rotate(45deg); z-index: 1001; }
 </style>

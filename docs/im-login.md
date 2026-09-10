@@ -7,15 +7,16 @@
 
 后续开发和部署以以上 E 盘目录为准。
 
-前端：Vue2 uni-app，`@tencentcloud/lite-chat` 4.4.4（标准版）。
-官方参考：https://cloud.tencent.com/document/product/269/75295
+前端：Vue2 uni-app，仅 Android/iOS App；现使用 `tuikit-atomic-x` 4.3.3 原生 TUIKit。
+原 `lite-chat` 登录已切换为原生登录适配，不会同时登录两套 SDK。
+官方参考：https://cloud.tencent.com/document/product/269/64507
 
 ## 运行
 
 1. 项目根目录执行 `npm install`。部署配置 `utils/config_deploy.js` 保持本地配置。
 2. 将后端 `xingyun_chat/api/controller/im.php` 的登录鉴权修改部署到对应服务。
 3. 后台 IM 基础配置填写 SDKAppID 和 SecretKey。前端不填写 SecretKey。
-4. 用 HBuilderX 运行本项目到 App 或 H5，正常登录业务账号。
+4. 安装 HBuilderX 的 TypeScript 编译插件，重新制作包含 UTS 插件的自定义调试基座，然后运行到 App。
 5. 观察控制台 `[IM] SDK_READY user_用户编号`。只有 SDK_READY 才表示聊天能力已就绪。
 
 签名接口：`POST {apiUrl}/xingyun_chat/api/index.php?m=im&a=login_info`。
@@ -29,9 +30,8 @@
 也可监听 `uni.$on('im:status', handler)`；页面卸载时须用 `$off` 移除相同 handler。
 
 ```js
-import { getIMClient, retryIMLogin } from '@/utils/im';
-// 未就绪时返回 null，之后的聊天功能复用此实例。
-const chat = getIMClient();
+import { retryIMLogin } from '@/utils/im';
+// 页面使用官方原生组件，不再通过 getIMClient 调用 Web SDK 消息 API。
 // 用户点击重连/重新登录聊天时调用。
 await retryIMLogin();
 ```
@@ -47,7 +47,10 @@ await retryIMLogin();
 同账号另一端登录导致被踢、后台配置错误、业务凭据过期。
 后端还需验证：缺少凭据拒绝签发；传入另一人的 user_id 时只能签发已认证用户的签名。
 
-当前尚未进行真实腾讯 IM 账号登录、HBuilderX 整包编译或服务器部署验证。
+2026-09-09 已通过截图确认旧 lite-chat 真机登录成功（user_133131079）。
+原生 TUIKit 的真机登录、收发消息仍待重新制作基座后验证；旧 SDK 登录成功不能替代此次验收。
+2026-09-10 安装 TypeScript 插件后，修正项目检查范围与 Vue2 导出兼容，HBuilderX Node18 App 资源编译通过。
+详见 `docs/im-chat.md`。
 
 ## 官方 skills 安装
 

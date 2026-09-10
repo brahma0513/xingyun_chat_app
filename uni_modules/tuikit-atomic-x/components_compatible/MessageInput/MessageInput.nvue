@@ -102,7 +102,7 @@
       <view v-if="enableEmoji" class="message-input__btn" @tap="handleFaceTap">
         <image class="message-input__icon" src="/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_face.png" mode="aspectFill" />
       </view>
-      <view class="message-input__btn" @tap="handleSend">
+      <view v-if="hasContent || enableTools" class="message-input__btn" @tap="handleSend">
         <view v-if="hasContent" class="message-input__send-btn">
           <text class="message-input__send-btn-text">发送</text>
         </view>
@@ -617,6 +617,7 @@ export default {
       this._switchMode(this.inputState === 'EMOJI' ? 'TEXT' : 'EMOJI')
     }, 300, { leading: true, trailing: false }),
     handleMoreTap: throttle(function() {
+      if (!this.enableTools) return
       if (this.inputState === 'TEXT' && Date.now() - this.lastOpTime < this.OP_THRESHOLD + 200) return
       if (Date.now() - this.lastOpTime < this.OP_THRESHOLD) return
       this.lastOpTime = Date.now(); this.isFocused = false

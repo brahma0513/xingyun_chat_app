@@ -1,20 +1,18 @@
 /**
- * 消息输入状态管理
+ * 消息输入状态管理 (Vue2 适配版)
  * @module MessageInputState
  *
- * 对齐底层 atomicxcore.api.message.MessageInputStore.kt（HybridAPI: MessageInputAPI.kt）
- *
- * 对外只暴露 `sendMessage(payload, option?)` 单一入口，与底层 `MessageInputStore.sendMessage`
- * 一一对应。具体业务（文本/图片/视频/音频/文件/表情/自定义）由各组件按
- * `SendMessagePayload` sealed 结构自行构造 payload 后调用。
+ * 对外只暴露 sendMessage(payload, option?) 单一入口，与底层一一对应。
  */
 import type {
   SendMessagePayload,
   SendMessageOption,
-} from '../types/message'
-import type { HybridCallOptions } from '../utssdk/interface.uts'
-import { callAPI, HybridResponseData } from "@/uni_modules/tuikit-atomic-x";
+} from '../types/message';
+// @ts-ignore
+import { callAPI, HybridResponseData } from "../utils/tuikitBridge";
 import { safeJsonParse } from '../utils/utsUtils';
+
+declare const getApp: any;
 
 function getGlobalInstanceMap(): Map<string, MessageInputState> {
   try {
@@ -40,20 +38,17 @@ class MessageInputState {
   private constructor(conversationID: string) {
     this.instanceId = MessageInputState.generateInstanceId(conversationID);
     this.conversationID = conversationID;
-
     this.createStore();
   }
 
   private createStore() {
-    const options: HybridCallOptions = {
+    callAPI(JSON.stringify({
       api: "createStore",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
-    };
-
-    callAPI(JSON.stringify(options), (response: string) => {
+        conversationID: this.conversationID
+      }
+    }), (response: string) => {
       try {
         const result = safeJsonParse<any>(response, {});
         if (result.code !== 0) {
@@ -82,9 +77,6 @@ class MessageInputState {
 
   /**
    * 发送消息（与底层 MessageInputStore.sendMessage 一一对应）
-   *
-   * @param payload SendMessagePayload sealed 结构（type 字段为 discriminator）
-   * @param option  SendMessageOption（可选）
    */
   sendMessage = (
     payload: SendMessagePayload,
@@ -95,21 +87,18 @@ class MessageInputState {
         createStoreParams: this.instanceId,
         payload: JSON.stringify(payload),
       };
-      if (option) {
-        params.option = JSON.stringify(option);
-      }
+      if (option) params.option = JSON.stringify(option);
 
-      const options: HybridCallOptions = {
+      callAPI(JSON.stringify({
         api: 'sendMessage',
         params,
-      };
-
-      callAPI(JSON.stringify(options), (result: string) => {
+      }), (result: string) => {
         try {
           const data = safeJsonParse(result, {}) as HybridResponseData;
           if (data.code === 0) {
             resolve();
           } else {
+            console.error(`[${this.instanceId}][sendMessage] Failed:`, data.message);
             reject(Object.assign(new Error(data.message || 'sendMessage failed'), { errCode: data.code }));
           }
         } catch (error) {
@@ -117,7 +106,7 @@ class MessageInputState {
         }
       });
     });
-  };
+  }
 
   destroyStore = (): Promise<void> => {
     // 幂等：实例已被销毁过，直接 resolve
@@ -125,18 +114,23 @@ class MessageInputState {
       return Promise.resolve();
     }
     InstanceMap.delete(this.instanceId);
-
     return new Promise((resolve) => {
-      const hybridCallOptions: HybridCallOptions = {
+      callAPI(JSON.stringify({
         api: 'destroyStore',
-        params: {
-          createStoreParams: this.instanceId,
-        },
-      };
-
-      callAPI(JSON.stringify(hybridCallOptions), () => {});
+        params: { createStoreParams: this.instanceId }
+      }), (result: string) => {
+        try {
+          const data = safeJsonParse(result, {}) as HybridResponseData;
+          if (data.code !== 0) {
+            console.warn(`[${this.instanceId}][destroyStore] ignored:`, data.message);
+          }
+        } catch (error) {
+          console.warn(`[${this.instanceId}][destroyStore] parse error:`, error);
+        }
+        resolve();
+      });
     });
-  };
+  }
 }
 
 export interface UseMessageInputStateOptions {
@@ -145,12 +139,10 @@ export interface UseMessageInputStateOptions {
 
 export function useMessageInputState(options: UseMessageInputStateOptions = {}) {
   const { conversationID = "" } = options;
-
   if (!conversationID) {
-    console.error('conversationID is required');
+    console.error('[useMessageInputState] conversationID is required');
     return;
   }
-
   return MessageInputState.getInstance(conversationID);
 }
 

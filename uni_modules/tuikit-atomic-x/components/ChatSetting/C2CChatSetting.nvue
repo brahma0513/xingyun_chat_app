@@ -1,111 +1,34 @@
 <template>
   <view class="c2c-chat-setting">
-    <!-- 导航栏 -->
-    <CustomNavbar
-      :title="navTitle"
-      :showBack="true"
-      @back="handleNavBack"
-    />
-
-    <!-- 内容区域 -->
+    <CustomNavbar :title="navTitle" :showBack="true" @back="handleNavBack" />
     <scroll-view class="content" scroll-y="true">
-      <!-- 用户信息区 -->
       <view class="user-info">
         <view class="user-info__avatar-wrapper">
-          <Avatar
-            :src="avatarURL"
-            :name="friendRemark || nickname || userID || ''"
-            :size="96"
-            :shape="'square'"
-            :defaultAvatarType="'user'"
-            pureMode
-          />
+          <Avatar :src="avatarURL" :name="friendRemark || nickname || userID || ''" :size="96" :shape="'square'" :defaultAvatarType="'user'" pureMode />
         </view>
         <view class="user-info__detail">
           <text class="user-info__nickname">{{ nickname || userID }}</text>
           <text class="user-info__id">ID：{{ userID || '-' }}</text>
-          <view>
-            <text class="user-info__signature" >用户签名：{{ signature || '暂无签名' }}</text>
-          </view>
-          </view>
+          <view><text class="user-info__signature">用户签名：{{ signature || '暂无签名' }}</text></view>
+        </view>
       </view>
-
-      <!-- 分隔区 -->
       <view class="section-gap"></view>
-
-      <!-- 备注名行 -->
-      <SettingRowNavigate
-        v-if="isFriend"
-        label="备注名"
-        :value="friendRemark || ''"
-        @click="handleRemarkClick"
-      />
-
-      <!-- 分隔区 -->
+      <SettingRowNavigate v-if="isFriend" label="备注名" :value="friendRemark || ''" @tap="handleRemarkClick" />
       <view class="section-gap"></view>
-
-      <!-- 开关设置区 -->
-      <SettingRowToggle
-        label="消息免打扰"
-        :modelValue="isNotDisturb || false"
-        @change="handleNotDisturbChange"
-      />
-      <SettingRowToggle
-        label="置顶聊天"
-        :modelValue="isPinned || false"
-        @change="handlePinnedChange"
-      />
-
-      <!-- 分隔区 -->
+      <SettingRowToggle label="消息免打扰" :modelValue="isNotDisturb || false" @change="handleNotDisturbChange" />
+      <SettingRowToggle label="置顶聊天" :modelValue="isPinned || false" @change="handlePinnedChange" />
       <view class="section-gap"></view>
-
-      <SettingRowToggle
-        label="加入黑名单"
-        :modelValue="isInBlacklist"
-        @change="handleBlacklistChange"
-      />
-
-      <!-- 分隔区 -->
+      <SettingRowToggle label="加入黑名单" :modelValue="isInBlacklist || false" @change="handleBlacklistChange" />
       <view class="section-gap"></view>
-
-      <!-- 操作按钮区 -->
-      <SettingRowButton
-        label="发送消息"
-        color="#0066FF"
-        @click="handleSendMessage"
-      />
-      <SettingRowButton
-        v-if="isFriend"
-        label="删除好友"
-        color="#FF3B30"
-        @click="handleDeleteFriendClick"
-      />
+      <SettingRowButton label="发送消息" color="#0066FF" @press="handleSendMessage" />
+      <SettingRowButton v-if="isFriend" label="删除好友" color="#FF3B30" @press="handleDeleteFriendClick" />
     </scroll-view>
-
-    <!-- 备注编辑弹窗 -->
-    <TextInputPopup
-      v-model:visible="showRemarkPopup"
-      title="修改备注"
-      :value="friendRemark || ''"
-      placeholder="请输入备注名"
-      :maxLength="15"
-      :maxByteLength="50"
-      @confirm="handleRemarkConfirm"
-    />
-
-    <!-- 删除好友确认弹窗 -->
-    <ConfirmDialog
-      v-model:visible="showDeleteConfirm"
-      title="确定删除该好友？"
-      confirmText="删除"
-      @confirm="handleDeleteConfirm"
-      @cancel="handleDeleteCancel"
-    />
+    <TextInputPopup :visible="showRemarkPopup" @update:visible="showRemarkPopup = $event" title="修改备注" :value="friendRemark || ''" placeholder="请输入备注名" :maxLength="15" :maxByteLength="50" @confirm="handleRemarkConfirm" />
+    <ConfirmDialog :visible="showDeleteConfirm" @update:visible="showDeleteConfirm = $event" title="确定删除该好友？" confirmText="删除" @confirm="handleDeleteConfirm" @cancel="handleDeleteCancel" />
   </view>
 </template>
 
-<script setup lang="ts">
-import { ref, computed, onBeforeMount } from 'vue';
+<script>
 import SettingRowToggle from './components/SettingRowToggle.nvue';
 import SettingRowNavigate from './components/SettingRowNavigate.nvue';
 import SettingRowButton from './components/SettingRowButton.nvue';
@@ -117,365 +40,135 @@ import { useContactState } from '../../state/ContactState';
 import { useConversationListState } from '../../state/ConversationListState';
 import { ReceiveMessageOpt } from '../../types/contact';
 import { throttle } from '../../utils/lodash';
-import type { ContactInfo } from '../../types/contact';
-import type { ConversationInfo } from '../../types/conversation';
 
-interface Props {
-  conversationID: string;
-  showType: number;
+export default {
+  components: { SettingRowToggle, SettingRowNavigate, SettingRowButton, TextInputPopup, ConfirmDialog, CustomNavbar, Avatar },
+  props: {
+    conversationID: { type: String, default: '' },
+    showType: { type: Number, default: 0 },
+  },
+  data() {
+    return {
+      contactState: null,
+      convState: null,
+      userInfo: null,
+      currentConversation: null,
+      statusBarHeight: 44,
+      showRemarkPopup: false,
+      showDeleteConfirm: false,
+    }
+  },
+  computed: {
+    userID() { return this.conversationID.startsWith('c2c_') ? this.conversationID.replace('c2c_', '') : '' },
+    nickname() { return (this.userInfo && this.userInfo.nickname) || '' },
+    avatarURL() { return (this.userInfo && this.userInfo.avatarURL) || '' },
+    signature() { return (this.userInfo && this.userInfo.aboutMe) || '' },
+    friendRemark() {
+      // friendRemark 仅在 V2TIMFriendInfo（friendList）上有值，V2TIMUserFullInfo（getContactInfo）路径不会带；
+      // 优先从 friendList 取，再 fallback 到 userInfo
+      var list = (this.contactState && this.contactState.friendList && this.contactState.friendList.value) || []
+      var uid = this.userID
+      var fromFriend = list.find(function(f) { return f.userID === uid })
+      var remark = fromFriend && fromFriend.friendRemark
+      if (remark) return remark
+      return (this.userInfo && this.userInfo.friendRemark) || ''
+    },
+    isFriend() { return ((this.userInfo && this.userInfo.isFriend) != null ? (this.userInfo && this.userInfo.isFriend) : false) },
+    isInBlacklist() {
+      var blackList = (this.contactState && this.contactState.blackList && this.contactState.blackList.value) || []
+      var uid = this.userID
+      var hit = blackList.find(function(f) { return f.userID === uid })
+      return !!hit || !!(this.userInfo && this.userInfo.isInBlacklist)
+    },
+    isNotDisturb() {
+      var conv = this.currentConversation
+      var opt = conv && conv.receiveOption
+      // 数据未加载时默认关闭免打扰，避免误显示为开启
+      if (opt === undefined || opt === null) return false
+      return opt !== ReceiveMessageOpt.RECEIVE
+    },
+    isPinned() {
+      var conv = this.currentConversation
+      return !!(conv && conv.isPinned)
+    },
+    navTitle() { return this.showType === 0 ? '个人设置' : '设置' },
+  },
+  beforeMount() {
+    this.contactState = useContactState('c2cSetting')
+    this.convState = useConversationListState('c2cSetting')
+    var systemInfo = uni.getSystemInfoSync()
+    this.statusBarHeight = systemInfo.statusBarHeight || 44
+    this.fetchPeerUserInfo()
+    this.fetchConversationInfo()
+  },
+  methods: {
+    fetchPeerUserInfo() {
+      if (!this.userID) return
+      var self = this
+      this.contactState.getContactInfo([this.userID]).then(function(list) {
+        if (list && list.length > 0) self.userInfo = list[0]
+      }).catch(function(err) { console.error('[C2CChatSetting] fetchPeerUserInfo failed:', err) })
+    },
+    fetchConversationInfo() {
+      if (!this.conversationID) return
+      var self = this
+      this.convState.getConversationInfo(this.conversationID).then(function(info) {
+        if (info) self.currentConversation = info
+      }).catch(function(err) { console.error('[C2CChatSetting] fetchConversationInfo failed:', err) })
+    },
+    handleRemarkClick() { this.showRemarkPopup = true },
+    handleRemarkConfirm(newRemark) {
+      if (!this.userID) return
+      this.contactState.setFriendRemark(this.userID, newRemark).catch(function(err) {
+        console.error('[C2CChatSetting] setFriendRemark failed:', err)
+      })
+    },
+    handleNotDisturbChange: throttle(function(value) {
+      if (!this.userID) return
+      var self = this
+      var opt = value ? ReceiveMessageOpt.NOT_NOTIFY : ReceiveMessageOpt.RECEIVE
+      this.convState.setReceiveMessageOpt('c2c_' + this.userID, opt).then(function() {
+        self.fetchConversationInfo()
+      }).catch(function(err) {
+        console.error('[C2CChatSetting] setReceiveMessageOpt failed:', err)
+      })
+    }, 1000, { leading: true, trailing: true }),
+    handlePinnedChange: throttle(function(value) {
+      if (!this.conversationID) return
+      var self = this
+      this.convState.pinConversation(this.conversationID, value).then(function() {
+        self.fetchConversationInfo()
+      }).catch(function(err) {
+        console.error('[C2CChatSetting] pinConversation failed:', err)
+      })
+    }, 1000, { leading: true, trailing: true }),
+    handleBlacklistChange(value) {
+      if (!this.userID) return
+      var self = this
+      var p = value ? this.contactState.addToBlacklist(this.userID) : this.contactState.removeFromBlacklist(this.userID)
+      p.then(function() { self.fetchPeerUserInfo() }).catch(function(err) { console.error('[C2CChatSetting] blacklist failed:', err) })
+    },
+    handleSendMessage() { if (this.showType === 0) uni.navigateBack() },
+    handleDeleteFriendClick() { this.showDeleteConfirm = true },
+    handleDeleteCancel() { this.showDeleteConfirm = false },
+    handleDeleteConfirm() {
+      this.showDeleteConfirm = false
+      if (!this.userID) return
+      this.contactState.deleteFriend(this.userID).then(function() { uni.navigateBack() }).catch(function(err) { console.error('[C2CChatSetting] deleteFriend failed:', err) })
+    },
+    handleNavBack() { uni.navigateBack() },
+  },
 }
-
-const props = defineProps<Props>();
-
-// 从 conversationID 提取 userID
-const userID = computed(() => 
-  props.conversationID.startsWith('c2c_') ? props.conversationID.replace('c2c_', '') : ''
-);
-
-// 使用 ContactState
-const {
-  friendList,
-  blackList,
-  setFriendRemark,
-  addToBlacklist,
-  removeFromBlacklist,
-  deleteFriend,
-  getContactInfo,
-} = useContactState('c2cSetting');
-
-// 使用 ConversationListState 获取置顶状态 + 设置消息接收选项
-const {
-  pinConversation,
-  getConversationInfo,
-  setReceiveMessageOpt,
-} = useConversationListState('c2cSetting');
-
-// 用户信息
-const userInfo = ref<ContactInfo | null>(null);
-const currentConversation = ref<ConversationInfo | null>(null);
-
-// 计算属性 - 用户信息
-const nickname = computed(() => userInfo.value?.nickname || '');
-const avatarURL = computed(() => userInfo.value?.avatarURL || '');
-const signature = computed(() => userInfo.value?.aboutMe || '');
-// friendRemark 仅在 V2TIMFriendInfo（friendList）上有值，V2TIMUserFullInfo（getContactInfo）路径不会带；
-// 优先从 friendList 取，再 fallback 到 userInfo
-const friendRemark = computed(() => {
-  const fromFriend = friendList.value.find(f => f.userID === userID.value)?.friendRemark;
-  return fromFriend || userInfo.value?.friendRemark || '';
-});
-const isFriend = computed(() => userInfo.value?.isFriend ?? false);
-const isInBlacklist = computed(() => {
-  const isInBlacklist = blackList.value.find(f => f.userID === userID.value);
-  return !!isInBlacklist || userInfo.value?.isInBlacklist;
-});
-const isNotDisturb = computed(() => {
-  const opt = currentConversation.value?.receiveOption;
-  // 数据未加载时默认关闭免打扰，避免误显示为开启
-  if (opt === undefined) return false;
-  return opt !== ReceiveMessageOpt.RECEIVE;
-});
-
-// 计算属性 - 置顶状态（从 ConversationListState 获取）
-const isPinned = computed(() => currentConversation.value?.isPinned ?? false);
-
-// 状态栏高度
-const statusBarHeight = ref(44);
-
-// 弹窗状态
-const showRemarkPopup = ref(false);
-const showDeleteConfirm = ref(false);
-
-// 导航栏标题
-const navTitle = computed(() => {
-  if (props.showType === 0) {
-    return '个人设置';
-  }
-  return '设置';
-});
-
-// 头像文字
-const avatarText = computed(() => {
-  return (friendRemark.value || nickname.value || userID.value || '').substring(0, 1);
-});
-
-// 获取用户信息
-const fetchPeerUserInfo = async () => {
-  if (!userID.value) return;
-  try {
-    const list = await getContactInfo([userID.value]);
-    if (list && list.length > 0) {
-      userInfo.value = list[0];
-    }
-  } catch (error) {
-    console.error('[C2CChatSetting] fetchPeerUserInfo failed:', error);
-  }
-};
-
-// 获取会话信息
-const fetchConversationInfo = async () => {
-  if (!props.conversationID) return;
-  try {
-    const info = await getConversationInfo(props.conversationID);
-    if (info) {
-      currentConversation.value = info;
-    }
-  } catch (error) {
-    console.error('[C2CChatSetting] fetchConversationInfo failed:', error);
-  }
-};
-
-// 初始化
-onBeforeMount(async () => {
-  // 获取系统信息
-  const systemInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = systemInfo.statusBarHeight || 44;
-  
-  // 获取用户信息和会话信息
-  await Promise.all([
-    fetchPeerUserInfo(),
-    fetchConversationInfo(),
-  ]);
-});
-
-// 返回上一页
-const handleBack = () => {
-  uni.navigateBack();
-};
-
-// 点击备注名
-const handleRemarkClick = () => {
-  showRemarkPopup.value = true;
-};
-
-// 确认修改备注
-const handleRemarkConfirm = async (newRemark: string) => {
-  if (!userID.value) return;
-  try {
-    await setFriendRemark(userID.value, newRemark);
-  } catch (error) {
-    console.error('[C2CChatSetting] setFriendRemark failed:', error);
-  }
-};
-
-// 切换免打扰 (使用 throttle 防止限频，trailing: true 确保最后一次操作生效)
-const handleNotDisturbChange = throttle(async (value: boolean) => {
-  if (!userID.value) return;
-  try {
-    const opt = value ? ReceiveMessageOpt.NOT_NOTIFY : ReceiveMessageOpt.RECEIVE;
-    await setReceiveMessageOpt(`c2c_${userID.value}`, opt);
-    fetchConversationInfo();
-  } catch (error) {
-    console.error('[C2CChatSetting] setReceiveMessageOpt failed:', error);
-  }
-}, 1000, { leading: true, trailing: true });
-
-// 切换置顶
-const handlePinnedChange = throttle(async (value: boolean) => {
-  if (!props.conversationID) return;
-  try {
-    await pinConversation(props.conversationID, value);
-    fetchConversationInfo();
-  } catch (error) {
-    console.error('[C2CChatSetting] pinConversation failed:', error);
-  }
-}, 1000, { leading: true, trailing: true });
-
-// 切换黑名单
-const handleBlacklistChange = async (value: boolean) => {
-  if (!userID.value) return;
-  try {
-    if (value) {
-      await addToBlacklist(userID.value);
-    } else {
-      await removeFromBlacklist(userID.value);
-    }
-    // 拉黑/取消拉黑后可能会影响好友关系，需要重新获取用户信息
-    await fetchPeerUserInfo();
-  } catch (error) {
-    console.error('[C2CChatSetting] blacklist operation failed:', error);
-  }
-};
-
-// 发送消息
-const handleSendMessage = () => {
-  switch (props.showType) {
-    case 0:
-      uni.navigateBack();
-      break;
-    case 1:
-      break;
-    case 2:
-      break;
-  }
-};
-
-// 点击删除好友
-const handleDeleteFriendClick = () => {
-  showDeleteConfirm.value = true;
-};
-
-// 取消删除
-const handleDeleteCancel = () => {
-  showDeleteConfirm.value = false;
-};
-
-// 确认删除
-const handleDeleteConfirm = async () => {
-  showDeleteConfirm.value = false;
-  if (!userID.value) return;
-  try {
-    await deleteFriend(userID.value);
-    // 删除成功后返回
-    uni.navigateBack();
-  } catch (error) {
-    console.error('[C2CChatSetting] deleteFriend failed:', error);
-  }
-};
-
-const handleNavBack = () => {
-  uni.navigateBack();
-};
 </script>
 
 <style scoped>
-.c2c-chat-setting {
-  flex: 1;
-  background-color: #F5F5F5;
-}
-
-/* 内容区域 */
-.content {
-  flex: 1;
-}
-
-/* 用户信息区 */
-.user-info {
-  flex-direction: row;
-  /* nvue 不支持 padding 简写，必须分开写 */
-  padding-top: 24rpx;
-  padding-bottom: 24rpx;
-  padding-left: 32rpx;
-  padding-right: 32rpx;
-  background-color: #FFFFFF;
-}
-
-.user-info__avatar-wrapper {
-  margin-right: 30rpx;
-}
-
-.user-info__avatar {
-  width: 96rpx;
-  height: 96rpx;
-  background-color: #F5F5F5;
-}
-
-.user-info__avatar--default {
-  justify-content: center;
-  align-items: center;
-  background-color: #CCCCCC;
-}
-
-.user-info__avatar-text {
-  font-size: 48rpx;
-  color: #FFFFFF;
-  font-weight: 500;
-}
-
-.user-info__detail {
-  flex: 1;
-  justify-content: center;
-}
-
-.user-info__nickname {
-  font-size: 36rpx;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.9);
-  margin-bottom: 8rpx;
-  line-height: 48rpx;
-  lines: 1;
-  text-overflow: ellipsis;
-  max-width: 400rpx;
-}
-
-.user-info__id {
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.5);
-  margin-bottom: 4rpx;
-  line-height: 40rpx;
-}
-
-.user-info__signature {
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.5);
-  max-width: 550rpx;
-}
-
-/* 分隔区 */
-.section-gap {
-  height: 20rpx;
-  background-color: #F0F2F7;
-}
-
-/* 确认弹窗 */
-.confirm-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  justify-content: center;
-  align-items: center;
-}
-
-.confirm-dialog {
-  width: 560rpx;
-  background-color: #FFFFFF;
-  border-radius: 24rpx;
-  padding: 48rpx 32rpx 32rpx;
-  align-items: center;
-}
-
-.confirm-dialog__title {
-  font-size: 32rpx;
-  color: #333333;
-  margin-bottom: 40rpx;
-  text-align: center;
-}
-
-.confirm-dialog__buttons {
-  flex-direction: row;
-  width: 100%;
-}
-
-.confirm-dialog__btn {
-  flex: 1;
-  height: 80rpx;
-  border-radius: 8rpx;
-  justify-content: center;
-  align-items: center;
-}
-
-.confirm-dialog__btn--cancel {
-  background-color: #F5F5F5;
-  margin-right: 16rpx;
-}
-
-.confirm-dialog__btn--confirm {
-  background-color: #FF3B30;
-  margin-left: 16rpx;
-}
-
-.confirm-dialog__btn-text {
-  font-size: 28rpx;
-}
-
-.confirm-dialog__btn-text--cancel {
-  color: #666666;
-}
-
-.confirm-dialog__btn-text--confirm {
-  color: #FFFFFF;
-}
+.c2c-chat-setting { flex: 1; background-color: #F5F5F5; }
+.content { flex: 1; }
+.user-info { flex-direction: row; padding-top: 24rpx; padding-bottom: 24rpx; padding-left: 32rpx; padding-right: 32rpx; background-color: #FFFFFF; }
+.user-info__avatar-wrapper { margin-right: 30rpx; }
+.user-info__detail { flex: 1; justify-content: center; }
+.user-info__nickname { font-size: 36rpx; font-weight: 500; color: rgba(0, 0, 0, 0.9); margin-bottom: 8rpx; line-height: 48rpx; lines: 1; text-overflow: ellipsis; max-width: 400rpx; }
+.user-info__id { font-size: 26rpx; color: rgba(0, 0, 0, 0.5); margin-bottom: 4rpx; line-height: 40rpx; }
+.user-info__signature { font-size: 26rpx; color: rgba(0, 0, 0, 0.5); max-width: 550rpx; }
+.section-gap { height: 20rpx; background-color: #F0F2F7; }
 </style>

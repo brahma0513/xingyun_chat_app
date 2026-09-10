@@ -1,36 +1,26 @@
 /**
- * 搜索状态管理
+ * 搜索状态管理 (Vue2 适配版)
  * @module SearchState
- *
- * 对齐底层 atomicxcore.api.search.SearchStore.kt（HybridAPI: SearchAPI.kt）
- *
- * **本次升级关键调整：**
- * - `SearchOption` 字段重命名：
- *   - `keywordListMatchType` → `keywordListMatchMode`
- *   - `searchType: SearchType（位掩码）` → `searchScope: SearchType[]`
- *   - `searchCount` → `pageSize`
- *   - `isCloudSearch` 删除（底层已移除）
- * - `SearchType` 从位掩码 class 改为 4 值整数枚举（FRIEND=0 / GROUP=1 / GROUP_MEMBER=2 / MESSAGE=3）
- * - listener 字段重命名（对齐 SearchDispatcher）：
- *   - `hasMoreFriendList` → `hasMoreFriends`
- *   - `hasMoreGroupList` → `hasMoreGroups`
- *   - `hasMoreGroupMemberList` → `hasMoreGroupMembers`
  */
-import { ref, type Ref } from "vue";
-import type { HybridCallOptions } from "@/uni_modules/tuikit-atomic-x";
+import { makeReactive } from "../utils/reactiveCompat";
+// @ts-ignore
 import { safeJsonParse } from "../utils/utsUtils";
-import { callAPI, addListener, removeListener } from "@/uni_modules/tuikit-atomic-x";
+// @ts-ignore
+import { callAPI, addListener, removeListener } from "../utils/tuikitBridge";
 import {
   KeywordListMatchMode,
   SearchType,
-  type SearchOption,
-  type FriendSearchInfo,
-  type MessageSearchResultItem,
 } from "../types/search";
-import type { GroupSearchInfo, GroupMember } from "../types/group";
+import type {
+  SearchOption,
+  FriendSearchInfo,
+  GroupSearchInfo,
+  MessageSearchResultItem,
+} from "../types/search";
+import type { GroupMember } from "../types/group";
 import type { UserProfile } from "../types/userProfile";
 
-// ==================== 全局实例管理 ====================
+declare const getApp: any;
 
 function getGlobalInstanceMap(): Map<string, SearchState> {
   try {
@@ -49,12 +39,10 @@ function getGlobalInstanceMap(): Map<string, SearchState> {
 
 const InstanceMap = getGlobalInstanceMap();
 
-// ==================== 搜索状态管理类 ====================
-
 class SearchState {
   private static readonly STORE_NAME = "Search";
 
-  /** 可绑定的数据字段（对齐 SearchDispatcher） */
+  /** 新版 listener 名（hasMore* 改简单复数形式） */
   private static readonly BINDABLE_DATA_NAMES = [
     "userList",
     "userTotalCount",
@@ -70,82 +58,74 @@ class SearchState {
     "hasMoreGroupMembers",
     "messageResults",
     "messageResultTotalCount",
-    "hasMoreMessageResults",
+    "hasMoreMessageResults"
   ];
 
   public readonly instanceId: string;
 
   // 用户（陌生人 / 全量 IM 账号）
-  public readonly userList: Ref<UserProfile[]>;
-  public readonly userTotalCount: Ref<number>;
-  public readonly hasMoreUsers: Ref<boolean>;
+  public readonly userList: { value: UserProfile[] };
+  public readonly userTotalCount: { value: number };
+  public readonly hasMoreUsers: { value: boolean };
 
   // 好友
-  public readonly friendList: Ref<FriendSearchInfo[]>;
-  public readonly friendTotalCount: Ref<number>;
-  /** 旧字段 hasMoreFriendList */
-  public readonly hasMoreFriends: Ref<boolean>;
+  public readonly friendList: { value: FriendSearchInfo[] };
+  public readonly friendTotalCount: { value: number };
+  public readonly hasMoreFriends: { value: boolean };
 
   // 群组
-  public readonly groupList: Ref<GroupSearchInfo[]>;
-  public readonly groupTotalCount: Ref<number>;
-  /** 旧字段 hasMoreGroupList */
-  public readonly hasMoreGroups: Ref<boolean>;
+  public readonly groupList: { value: GroupSearchInfo[] };
+  public readonly groupTotalCount: { value: number };
+  public readonly hasMoreGroups: { value: boolean };
 
   // 群成员
-  public readonly groupMemberList: Ref<Record<string, GroupMember[]>>;
-  public readonly groupMemberTotalCount: Ref<number>;
-  /** 旧字段 hasMoreGroupMemberList */
-  public readonly hasMoreGroupMembers: Ref<boolean>;
+  public readonly groupMemberList: { value: Record<string, GroupMember[]> };
+  public readonly groupMemberTotalCount: { value: number };
+  public readonly hasMoreGroupMembers: { value: boolean };
 
   // 消息
-  public readonly messageResults: Ref<MessageSearchResultItem[]>;
-  public readonly messageResultTotalCount: Ref<number>;
-  public readonly hasMoreMessageResults: Ref<boolean>;
+  public readonly messageResults: { value: MessageSearchResultItem[] };
+  public readonly messageResultTotalCount: { value: number };
+  public readonly hasMoreMessageResults: { value: boolean };
 
   private constructor(instanceId: string = "default_search_store") {
     this.instanceId = SearchState.generateInstanceId(instanceId);
 
-    this.userList = ref<UserProfile[]>([]);
-    this.userTotalCount = ref<number>(0);
-    this.hasMoreUsers = ref<boolean>(false);
+    this.userList = makeReactive({ value: [] });
+    this.userTotalCount = makeReactive({ value: 0 });
+    this.hasMoreUsers = makeReactive({ value: false });
 
-    this.friendList = ref<FriendSearchInfo[]>([]);
-    this.friendTotalCount = ref<number>(0);
-    this.hasMoreFriends = ref<boolean>(false);
+    this.friendList = makeReactive({ value: [] });
+    this.friendTotalCount = makeReactive({ value: 0 });
+    this.hasMoreFriends = makeReactive({ value: false });
 
-    this.groupList = ref<GroupSearchInfo[]>([]);
-    this.groupTotalCount = ref<number>(0);
-    this.hasMoreGroups = ref<boolean>(false);
+    this.groupList = makeReactive({ value: [] });
+    this.groupTotalCount = makeReactive({ value: 0 });
+    this.hasMoreGroups = makeReactive({ value: false });
 
-    this.groupMemberList = ref<Record<string, GroupMember[]>>({});
-    this.groupMemberTotalCount = ref<number>(0);
-    this.hasMoreGroupMembers = ref<boolean>(false);
+    this.groupMemberList = makeReactive({ value: {} as Record<string, GroupMember[]> });
+    this.groupMemberTotalCount = makeReactive({ value: 0 });
+    this.hasMoreGroupMembers = makeReactive({ value: false });
 
-    this.messageResults = ref<MessageSearchResultItem[]>([]);
-    this.messageResultTotalCount = ref<number>(0);
-    this.hasMoreMessageResults = ref<boolean>(false);
+    this.messageResults = makeReactive({ value: [] });
+    this.messageResultTotalCount = makeReactive({ value: 0 });
+    this.hasMoreMessageResults = makeReactive({ value: false });
 
     this.createStore();
   }
 
-
   private static generateInstanceId(baseInstanceId: string): string {
     return JSON.stringify({
       storeName: SearchState.STORE_NAME,
-      instanceId: baseInstanceId,
+      instanceId: baseInstanceId
     });
   }
 
   private createStore(): void {
-    const options: HybridCallOptions = {
+    callAPI(JSON.stringify({
       api: "createStore",
-      params: {
-        createStoreParams: this.instanceId,
-      },
-    };
-
-    callAPI(JSON.stringify(options), (response: string) => {
+      params: { createStoreParams: this.instanceId }
+    }), (response: string) => {
       try {
         const result = safeJsonParse<any>(response, {});
         if (result.code === 0) {
@@ -168,9 +148,7 @@ class SearchState {
   }
 
   private bindEvent(): void {
-    const storeName = SearchState.STORE_NAME;
-
-    const dataHandlers: Record<string, (result: any) => void> = {
+    const handlers: Record<string, (r: any) => void> = {
       userList: (r) => { this.userList.value = safeJsonParse<UserProfile[]>(r.userList, []); },
       userTotalCount: (r) => { this.userTotalCount.value = Number(r.userTotalCount || 0); },
       hasMoreUsers: (r) => { this.hasMoreUsers.value = Boolean(r.hasMoreUsers); },
@@ -188,18 +166,15 @@ class SearchState {
       hasMoreMessageResults: (r) => { this.hasMoreMessageResults.value = Boolean(r.hasMoreMessageResults); },
     };
 
-    SearchState.BINDABLE_DATA_NAMES.forEach((dataName) => {
+    SearchState.BINDABLE_DATA_NAMES.forEach(dataName => {
       addListener({
-        type: "",
-        store: storeName,
-        name: dataName,
-        params: {
-          createStoreParams: this.instanceId,
-        },
+        type: "", store: SearchState.STORE_NAME, name: dataName,
+        params: { createStoreParams: this.instanceId }
       }, (data: string) => {
         try {
           const result = safeJsonParse<any>(data, {});
-          dataHandlers[dataName]?.(result);
+          const handler = handlers[dataName];
+          if (handler) handler(result);
         } catch (error) {
           console.error(`[${this.instanceId}][${dataName} listener] Error:`, error);
         }
@@ -207,42 +182,45 @@ class SearchState {
     });
   }
 
-  // ============================================================================
-  // Actions
-  // ============================================================================
-
   /**
-   * 搜索
-   *
-   * @param keywordList 关键词列表
-   * @param option 搜索选项；新版字段：keywordListMatchMode / searchScope[] / pageSize
+   * 搜索（新版字段：keywordListMatchMode / searchScope / pageSize）
    */
   search = async (keywordList: string[], option?: SearchOption): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const searchOption: any = {
-        keywordListMatchMode: option?.keywordListMatchMode ?? KeywordListMatchMode.OR,
-        searchScope: option?.searchScope ?? [
-          SearchType.FRIEND,
-          SearchType.MESSAGE,
-          SearchType.GROUP,
-          SearchType.GROUP_MEMBER,
-        ],
-        pageSize: option?.pageSize ?? 20,
-      };
-      if (option?.userFilter) searchOption.userFilter = option.userFilter;
-      if (option?.groupMemberFilter) searchOption.groupMemberFilter = option.groupMemberFilter;
-      if (option?.messageFilter) searchOption.messageFilter = option.messageFilter;
+      // 兼容旧字段：keywordListMatchType -> keywordListMatchMode；searchType -> searchScope；searchCount -> pageSize
+      const opt: any = option ? (option as any) : {};
+      const matchMode = (opt.keywordListMatchMode !== undefined) ? opt.keywordListMatchMode
+        : (opt.keywordListMatchType !== undefined) ? opt.keywordListMatchType
+          : KeywordListMatchMode.OR;
+      const pageSize = (opt.pageSize !== undefined) ? opt.pageSize
+        : (opt.searchCount !== undefined) ? opt.searchCount
+          : 20;
+      let scope: SearchType[];
+      if (Array.isArray(opt.searchScope)) {
+        scope = opt.searchScope;
+      } else if (opt.searchType !== undefined) {
+        scope = [opt.searchType];
+      } else {
+        scope = [SearchType.FRIEND, SearchType.GROUP, SearchType.GROUP_MEMBER, SearchType.MESSAGE];
+      }
 
-      const options: HybridCallOptions = {
+      const searchOption: any = {
+        keywordListMatchMode: matchMode,
+        searchScope: scope,
+        pageSize,
+      };
+      if (opt.userFilter) searchOption.userFilter = opt.userFilter;
+      if (opt.groupMemberFilter) searchOption.groupMemberFilter = opt.groupMemberFilter;
+      if (opt.messageFilter) searchOption.messageFilter = opt.messageFilter;
+
+      callAPI(JSON.stringify({
         api: "search",
         params: {
           createStoreParams: this.instanceId,
           keywordList: JSON.stringify(keywordList),
-          option: JSON.stringify(searchOption),
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
+          option: JSON.stringify(searchOption)
+        }
+      }), (response: string) => {
         try {
           const result = safeJsonParse<any>(response, {});
           if (result.code === 0) {
@@ -253,29 +231,21 @@ class SearchState {
             err.code = result.code;
             reject(err);
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
-  /**
-   * 搜索更多
-   *
-   * @param searchType 搜索类型（整数枚举：FRIEND=0 / GROUP=1 / GROUP_MEMBER=2 / MESSAGE=3）
-   */
-  searchMore = async (searchType: SearchType | number): Promise<void> => {
+  /** 加载更多搜索结果（按 SearchType） */
+  searchMore = async (searchType: SearchType): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
+      callAPI(JSON.stringify({
         api: "searchMore",
         params: {
           createStoreParams: this.instanceId,
-          searchType: typeof searchType === 'number' ? searchType : Number(searchType),
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
+          searchType,
+        }
+      }), (response: string) => {
         try {
           const result = safeJsonParse<any>(response, {});
           if (result.code === 0) {
@@ -286,12 +256,10 @@ class SearchState {
             err.code = result.code;
             reject(err);
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
   clearSearchResults = (): void => {
     this.userList.value = [];
@@ -313,21 +281,13 @@ class SearchState {
     this.messageResults.value = [];
     this.messageResultTotalCount.value = 0;
     this.hasMoreMessageResults.value = false;
-  };
-
-  // ============================================================================
-  // 销毁
-  // ============================================================================
+  }
 
   private unbindEvent(): void {
-    SearchState.BINDABLE_DATA_NAMES.forEach((dataName) => {
+    SearchState.BINDABLE_DATA_NAMES.forEach(dataName => {
       removeListener({
-        type: "",
-        store: SearchState.STORE_NAME,
-        name: dataName,
-        params: {
-          createStoreParams: this.instanceId,
-        },
+        type: "", store: SearchState.STORE_NAME, name: dataName,
+        params: { createStoreParams: this.instanceId }
       });
     });
   }
@@ -338,16 +298,13 @@ class SearchState {
     this.unbindEvent();
     this.clearSearchResults();
     InstanceMap.delete(this.instanceId);
-
-    const options: HybridCallOptions = {
+    callAPI(JSON.stringify({
       api: "destroyStore",
-      params: {
-        createStoreParams: this.instanceId,
-      },
-    };
-
-    callAPI(JSON.stringify(options), () => {});
-  };
+      params: { createStoreParams: this.instanceId }
+    }), (response: string) => {
+      try { safeJsonParse<any>(response, {}); } catch (e) { console.error(e); }
+    });
+  }
 }
 
 export interface UseSearchStateOptions {
@@ -358,5 +315,5 @@ export function useSearchState(instanceId: string = "default_search_store") {
   return SearchState.getInstance(instanceId);
 }
 
-export { SearchState };
+export { SearchState, SearchType, KeywordListMatchMode };
 export default useSearchState;

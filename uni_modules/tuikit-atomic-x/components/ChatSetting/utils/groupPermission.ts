@@ -48,7 +48,7 @@ export enum GroupPermission {
 type RolePermissions = Record<GroupPermission, boolean>;
 
 /** 群类型-角色-权限矩阵 */
-type PermissionMatrix = Record<GroupType, Record<GroupMemberFilterRole, RolePermissions>>;
+type PermissionMatrix = Record<GroupType, Record<GroupMemberRole | GroupMemberFilterRole, RolePermissions>>;
 
 // ============================================================================
 // 权限矩阵数据
@@ -60,7 +60,7 @@ type PermissionMatrix = Record<GroupType, Record<GroupMemberFilterRole, RolePerm
  */
 const PERMISSION_MATRIX: PermissionMatrix = {
   [GroupType.Work]: {
-    [GroupMemberFilterRole.OWNER]: {
+    [GroupMemberRole.OWNER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -74,7 +74,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.ADMIN]: {
+    [GroupMemberRole.ADMIN]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true, // Work 群普通成员可编辑
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -88,7 +88,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.MEMBER]: {
+    [GroupMemberRole.MEMBER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true, // Work 群普通成员可编辑
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -119,7 +119,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
   },
 
   [GroupType.Public]: {
-    [GroupMemberFilterRole.OWNER]: {
+    [GroupMemberRole.OWNER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -133,7 +133,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: true,
       [GroupPermission.QUIT_GROUP]: false, // Owner 不能退群，需先转让
     },
-    [GroupMemberFilterRole.ADMIN]: {
+    [GroupMemberRole.ADMIN]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -147,7 +147,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.MEMBER]: {
+    [GroupMemberRole.MEMBER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: false,
@@ -178,7 +178,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
   },
 
   [GroupType.Meeting]: {
-    [GroupMemberFilterRole.OWNER]: {
+    [GroupMemberRole.OWNER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -192,7 +192,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: true,
       [GroupPermission.QUIT_GROUP]: false, // Owner 不能退群，需先转让
     },
-    [GroupMemberFilterRole.ADMIN]: {
+    [GroupMemberRole.ADMIN]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -206,7 +206,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.MEMBER]: {
+    [GroupMemberRole.MEMBER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: false,
@@ -237,7 +237,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
   },
 
   [GroupType.Community]: {
-    [GroupMemberFilterRole.OWNER]: {
+    [GroupMemberRole.OWNER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -251,7 +251,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: true,
       [GroupPermission.QUIT_GROUP]: false, // Owner 不能退群，需先转让
     },
-    [GroupMemberFilterRole.ADMIN]: {
+    [GroupMemberRole.ADMIN]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -265,7 +265,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.MEMBER]: {
+    [GroupMemberRole.MEMBER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: false,
@@ -296,7 +296,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
   },
 
   [GroupType.AVChatRoom]: {
-    [GroupMemberFilterRole.OWNER]: {
+    [GroupMemberRole.OWNER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: true,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: true,
@@ -310,7 +310,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false, // AVChatRoom 不支持解散
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.ADMIN]: {
+    [GroupMemberRole.ADMIN]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: false,
@@ -324,7 +324,7 @@ const PERMISSION_MATRIX: PermissionMatrix = {
       [GroupPermission.DISMISS_GROUP]: false,
       [GroupPermission.QUIT_GROUP]: true,
     },
-    [GroupMemberFilterRole.MEMBER]: {
+    [GroupMemberRole.MEMBER]: {
       [GroupPermission.EDIT_GROUP_PROFILE_NAME]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_AVATAR]: false,
       [GroupPermission.EDIT_GROUP_PROFILE_INTRODUCTION]: false,
@@ -368,10 +368,12 @@ const PERMISSION_MATRIX: PermissionMatrix = {
  */
 export function hasPermission(
   groupType: GroupType,
-  role: GroupMemberFilterRole,
+  role: GroupMemberRole,
   permission: GroupPermission
 ): boolean {
-  return PERMISSION_MATRIX[groupType]?.[role]?.[permission] ?? false;
+  var typePerms = PERMISSION_MATRIX[groupType];
+  var rolePerms = typePerms ? typePerms[role] : undefined;
+  return (rolePerms && rolePerms[permission] != null) ? rolePerms[permission] : false;
 }
 
 /**
@@ -382,9 +384,10 @@ export function hasPermission(
  */
 export function getPermissions(
   groupType: GroupType,
-  role: GroupMemberFilterRole
+  role: GroupMemberRole
 ): RolePermissions | null {
-  return PERMISSION_MATRIX[groupType]?.[role] ?? null;
+  var typePerms = PERMISSION_MATRIX[groupType];
+  return typePerms ? (typePerms[role] || null) : null;
 }
 
 /**
@@ -396,7 +399,7 @@ export function getPermissions(
  */
 export function showGroupManagement(
   groupType: GroupType,
-  role: GroupMemberFilterRole
+  role: GroupMemberRole
 ): boolean {
   return (
     hasPermission(groupType, role, GroupPermission.MUTE_MEMBER) ||

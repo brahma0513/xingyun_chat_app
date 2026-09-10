@@ -1,33 +1,41 @@
 <template>
   <view class="btn" @tap="handleMic">
-    <image class="btn-img" :src="microphoneStatus === DeviceStatus.ON ? MIC_ON_SRC : MIC_OFF_SRC"></image>
+    <image class="btn-img" :src="microphoneStatusValue === DeviceStatusON ? MIC_ON_SRC : MIC_OFF_SRC"></image>
     <text class="btn-text">
-      {{ microphoneStatus === DeviceStatus.ON ? '麦克风已开' : '麦克风已关' }}
+      {{ microphoneStatusValue === DeviceStatusON ? '麦克风已开' : '麦克风已关' }}
     </text>
   </view>
 </template>
 
-<script setup lang="ts">
-  import { watch, ref, computed, onMounted } from "vue";
+<script>
+  import { useDeviceState, DeviceStatus } from '@/uni_modules/tuikit-atomic-x/state/DeviceState';
 
-  import MIC_ON_SRC from "../../../static/icon/mic-on.png";
-  import MIC_OFF_SRC from "../../../static/icon/mic-off.png";
-  import {
-    useDeviceState,
-    DeviceStatus
-  } from '@/uni_modules/tuikit-atomic-x/state/DeviceState';
-  const {
-    microphoneStatus,
-    openLocalMicrophone,
-    closeLocalMicrophone,
-  } = useDeviceState()
+  var MIC_ON_SRC = '/uni_modules/tuikit-atomic-x/static/icon/mic-on.png';
+  var MIC_OFF_SRC = '/uni_modules/tuikit-atomic-x/static/icon/mic-off.png';
 
+  var deviceStateInstance = useDeviceState();
 
-  const handleMic = () => {
-    if (microphoneStatus.value === DeviceStatus.ON) {
-      closeLocalMicrophone();
-    } else {
-      openLocalMicrophone();
+  export default {
+    data: function() {
+      return {
+        MIC_ON_SRC: MIC_ON_SRC,
+        MIC_OFF_SRC: MIC_OFF_SRC,
+        DeviceStatusON: DeviceStatus.ON
+      };
+    },
+    computed: {
+      microphoneStatusValue: function() {
+        return deviceStateInstance.state.microphoneStatus;
+      }
+    },
+    methods: {
+      handleMic: function() {
+        if (deviceStateInstance.state.microphoneStatus === DeviceStatus.ON) {
+          deviceStateInstance.closeLocalMicrophone();
+        } else {
+          deviceStateInstance.openLocalMicrophone();
+        }
+      }
     }
   };
 </script>

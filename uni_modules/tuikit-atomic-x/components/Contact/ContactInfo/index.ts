@@ -5,7 +5,7 @@ import FriendInfo from './FriendInfo.nvue'
 import ApplicationVerify from './ApplicationVerify.nvue'
 import SetRemark from './SetRemark.nvue'
 
-export type { ContactInfoType } from './ContactInfo.nvue'
+export type ContactInfoType = 'addFriend' | 'newContact' | 'friend'
 
 export {
   ContactInfo,

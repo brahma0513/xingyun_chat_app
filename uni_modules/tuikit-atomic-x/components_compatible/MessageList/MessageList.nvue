@@ -193,7 +193,7 @@ export default {
           var lastMessage = lastNew
           var isMyMessage = lastMessage.isSentBySelf
           if (!isMyMessage) {
-            this.convState.clearConversationUnreadCount(this.conversationID)
+            this.markRead()
           }
           if (self.isLocating) return
           // 先采样再改 showScrollToBottom，避免下面的判断依赖上面这次赋值的顺序
@@ -237,6 +237,7 @@ export default {
     }
   },
   mounted() {
+    this.markRead()
     var self = this
     if (this.msgState.messageList.value && this.msgState.messageList.value.length > 0) {
       this.$nextTick(function() {
@@ -318,6 +319,10 @@ export default {
   beforeDestroy() { this._cleanup() },
   beforeUnmount() { this._cleanup() },
   methods: {
+    markRead() {
+      if (this.isCleaned) return
+      this.convState.clearConversationUnreadCount(this.conversationID).catch(function() {})
+    },
     /**
      * 首屏收尾（vue2 适配版，与 vue3 主版同策略）
      *
@@ -329,6 +334,7 @@ export default {
      * ponytail: 用固定重试点替代逐帧轮询 $refs.cell_*，覆盖同一场景且代码更少
      */
     _startFirstLoadFinalize() {
+      this.markRead()
       if (this.firstScreenStarted) return
       this.firstScreenStarted = true
       var self = this
@@ -369,7 +375,6 @@ export default {
       this.isCleaned = true
       for (var i = 0; i < this.pendingTimers.length; i++) clearTimeout(this.pendingTimers[i])
       this.pendingTimers = []
-      this.convState.clearConversationUnreadCount(this.conversationID)
       if (this._handleAudioConvertStreamGrow) {
         uni.$off('audioConvertStreamGrow', this._handleAudioConvertStreamGrow)
       }

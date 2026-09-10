@@ -1,40 +1,48 @@
 <template>
   <view class="btn" @tap="handleHangup">
-    <image class="btn-img" :style="[style]" :src="HANGUP_SRC"></image>
+    <image class="btn-img" :style="[btnStyle]" :src="HANGUP_SRC"></image>
     <text class="btn-text" v-if="isShowText">
       挂断
     </text>
   </view>
 </template>
 
-<script setup lang="ts">
-  import { computed } from "vue";
-  import HANGUP_SRC from "../../../static/icon/hangup.png";
-  import {
-    useCallState
-  } from '@/uni_modules/tuikit-atomic-x/state/CallState';
-  const {
-    hangup
-  } = useCallState()
+<script>
+  import { useCallState } from '@/uni_modules/tuikit-atomic-x/state/CallState';
 
-  const props = defineProps({
-    size: {
-      type: Number,
-      default: 60,
+  var HANGUP_SRC = '/uni_modules/tuikit-atomic-x/static/icon/hangup.png';
+
+  var callStateInstance = useCallState();
+
+  export default {
+    props: {
+      size: {
+        type: Number,
+        default: 60
+      },
+      isShowText: {
+        type: Boolean,
+        default: true
+      }
     },
-    isShowText: {
-      type: Boolean,
-      default: true,
+    data: function() {
+      return {
+        HANGUP_SRC: HANGUP_SRC
+      };
     },
-  });
-
-  const style = computed(() => ({
-    width: props.size + "px",
-    height: props.size + "px",
-  }));
-
-  const handleHangup = () => {
-    hangup();
+    computed: {
+      btnStyle: function() {
+        return {
+          width: this.size + 'px',
+          height: this.size + 'px'
+        };
+      }
+    },
+    methods: {
+      handleHangup: function() {
+        callStateInstance.hangup();
+      }
+    }
   };
 </script>
 

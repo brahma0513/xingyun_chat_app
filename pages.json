@@ -22,6 +22,14 @@
       }
     },
     {
+      "path": "pages/im/conversations",
+      "style": { "navigationBarTitleText": "消息", "app-plus": { "bounce": "none" } }
+    },
+    {
+      "path": "pages/im/chat",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustNothing" } }
+    },
+    {
       "path": "pages/index_son/index_son",
       "style": {
         "navigationBarTitleText": "",

@@ -1,5 +1,5 @@
 /**
- * 解析群提示消息文本
+ * 解析群提示消息文本（Vue2 适配版）
  *
  * 注意：新版 atomicxcore 用 sealed class GroupTipsInfo，
  * Hybrid 序列化时用 `type` 字段做 discriminator（值为大驼峰类名，如 "JoinGroup"）。
@@ -19,17 +19,6 @@ const memberName = (m?: GroupMember | null): string => {
 const membersName = (list?: GroupMember[] | null): string => {
   if (!list || list.length === 0) return ''
   return list.map(memberName).filter(Boolean).join('、')
-}
-
-/** 格式化禁言时长（秒），自适应「时/分/秒」 */
-const formatMuteDuration = (seconds: number): string => {
-  if (!seconds || seconds <= 0) return ''
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return m > 0 ? `${h}小时${m}分钟` : `${h}小时`
-  if (m > 0) return s > 0 ? `${m}分钟${s}秒` : `${m}分钟`
-  return `${s}秒`
 }
 
 export const resolveGroupTipMessage = (message: MessageInfo): string => {
@@ -88,13 +77,11 @@ export const resolveGroupTipMessage = (message: MessageInfo): string => {
       return `${memberName(tip.opUser)} 修改了群邀请审批方式`
 
     case 'MuteGroupMember': {
-      const op = memberName(tip.opUser)
-      const target = tip.isSelfMuted ? '你' : membersName(tip.mutedGroupMembers)
-      if (!target) return '系统消息'
-      const duration = formatMuteDuration(Number(tip.muteTime) || 0)
-      return duration
-        ? `${op} 禁言了 ${target} ${duration}`
-        : `${op} 解除了 ${target} 的禁言`
+      const muteText = tip.isSelfMuted ? '你被' : ''
+      const muteTime = tip.muteTime > 0
+        ? `禁言${Math.floor(tip.muteTime / 60)}分钟`
+        : '解除禁言'
+      return `${muteText}${memberName(tip.opUser)} ${muteTime}`
     }
 
     case 'PinGroupMessage':

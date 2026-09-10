@@ -2,8 +2,7 @@
   <view class="search-results">
     <!-- 预搜索状态 -->
     <view v-if="showPresearch && !isConversationSearch" class="search-results__content">
-      <component 
-        :is="PresearchComponent"
+      <SearchPresearch
         :searchHistory="searchHistory"
         :keyword="keyword"
         :showCloudSearch="showCloudSearch"
@@ -14,260 +13,179 @@
     </view>
     <!-- 加载状态 -->
     <view v-else-if="isLoading" class="search-results__content">
-      <component 
-        :is="LoadingComponent"
-      />
+      <SearchLoading />
     </view>
     <!-- 空状态 -->
     <view v-else-if="isEmpty" class="search-results__content">
-      <component 
-        :is="EmptyComponent"
-        :keyword="keyword"
-      />
+      <SearchEmpty :keyword="keyword" />
     </view>
     <!-- 结果列表 -->
     <list v-else class="search-results__list">
-      <template v-if="!isConversationSearch">
-        <cell v-if="friendList && friendList.length > 0" class="search-results__section-header-cell">
-          <view class="search-results__section-header">
-            <text class="search-results__section-title">用户</text>
-          </view>
-        </cell>
-        <cell
-          class="search-results__section-item-cell"
-          v-for="friend in displayFriendList" 
-          :key="'friend-' + friend.userID"
-        >
-          <view class="search-results__item-wrapper">
-            <component
-              :is="SearchResultItemComponent"
-              type="friend"
-              :data="friend"
-              :keyword="keyword"
-              :Avatar="AvatarComp"
-              @click="handleItemClick"
-            />
-          </view>
-        </cell>
-        <cell v-if="showMoreFriend" class="search-results__section-more-cell">
-          <view class="search-results__section-more" @click="handleViewMore('friend')">
-            <text class="search-results__section-more-text">查看更多用户</text>
-          </view>
-        </cell>
-        <cell v-if="friendList && friendList.length > 0" class="search-results__section-gap"></cell>
-        <cell v-if="groupList && groupList.length > 0" class="search-results__section-header-cell">
-          <view class="search-results__section-header">
-            <text class="search-results__section-title">群聊</text>
-          </view>
-        </cell>
-        <cell
-          class="search-results__section-item-cell"
-          v-for="group in displayGroupList" 
-          :key="'group-' + group.groupID"
-        >
-          <view class="search-results__item-wrapper">
-            <component
-              :is="SearchResultItemComponent"
-              type="group"
-              :data="group"
-              :keyword="keyword"
-              :Avatar="AvatarComp"
-              @click="handleItemClick"
-            />
-          </view>
-        </cell>
-        <cell v-if="showMoreGroup" class="search-results__section-more-cell">
-          <view class="search-results__section-more" @click="handleViewMore('group')">
-            <text class="search-results__section-more-text">查看更多群聊</text>
-          </view>
-        </cell>
-        <cell v-if="groupList && groupList.length > 0" class="search-results__section-gap"></cell>
-      </template>
+      <!-- 用户 -->
+      <cell v-if="!isConversationSearch && friendList && friendList.length > 0" class="search-results__section-header-cell">
+        <view class="search-results__section-header">
+          <text class="search-results__section-title">用户</text>
+        </view>
+      </cell>
+      <cell
+        v-if="!isConversationSearch"
+        class="search-results__section-item-cell"
+        v-for="friend in displayFriendList"
+        :key="'friend-' + friend.userID"
+      >
+        <view class="search-results__item-wrapper">
+          <SearchResultItem
+            type="friend"
+            :data="friend"
+            :keyword="keyword"
+            :Avatar="AvatarComp"
+            @click="handleItemClick"
+          />
+        </view>
+      </cell>
+      <cell v-if="!isConversationSearch && showMoreFriend" class="search-results__section-more-cell">
+        <view class="search-results__section-more" @tap="handleViewMore('friend')">
+          <text class="search-results__section-more-text">查看更多用户</text>
+        </view>
+      </cell>
+      <cell v-if="!isConversationSearch && friendList && friendList.length > 0" class="search-results__section-gap"></cell>
+
+      <!-- 群聊 -->
+      <cell v-if="!isConversationSearch && groupList && groupList.length > 0" class="search-results__section-header-cell">
+        <view class="search-results__section-header">
+          <text class="search-results__section-title">群聊</text>
+        </view>
+      </cell>
+      <cell
+        v-if="!isConversationSearch"
+        class="search-results__section-item-cell"
+        v-for="group in displayGroupList"
+        :key="'group-' + group.groupID"
+      >
+        <view class="search-results__item-wrapper">
+          <SearchResultItem
+            type="group"
+            :data="group"
+            :keyword="keyword"
+            :Avatar="AvatarComp"
+            @click="handleItemClick"
+          />
+        </view>
+      </cell>
+      <cell v-if="!isConversationSearch && showMoreGroup" class="search-results__section-more-cell">
+        <view class="search-results__section-more" @tap="handleViewMore('group')">
+          <text class="search-results__section-more-text">查看更多群聊</text>
+        </view>
+      </cell>
+      <cell v-if="!isConversationSearch && groupList && groupList.length > 0" class="search-results__section-gap"></cell>
+
+      <!-- 聊天记录标题 -->
       <cell v-if="messageResults && messageResults.length > 0" class="search-results__section-header-cell">
         <view class="search-results__section-header">
           <text class="search-results__section-title">聊天记录</text>
         </view>
       </cell>
-      <template v-if="isConversationSearch">
-        <template v-for="messageResult in displayMessageResults" :key="'conv-' + messageResult.conversationID">
-          <cell
-            class="search-results__section-item-cell"
-            v-for="message in messageResult.messageList"
-            :key="'message-' + message.messageID"
-          >
-            <view class="search-results__item-wrapper">
-              <component
-                :is="SearchResultItemComponent"
-                type="message"
-                :data="message"
-                :keyword="keyword"
-                :Avatar="AvatarComp"
-                @click="handleItemClick"
-              />
-            </view>
-          </cell>
-        </template>
-      </template>
-      <template v-else>
-        <cell
-          class="search-results__section-item-cell"
-          v-for="messageResult in displayMessageResults" 
-          :key="'message-' + messageResult.conversationID"
-        >
-          <view class="search-results__item-wrapper">
-            <component
-              :is="SearchResultItemComponent"
-              type="conversation"
-              :data="messageResult"
-              :keyword="keyword"
-              :Avatar="AvatarComp"
-              @click="handleItemClick"
-            />
-          </view>
-        </cell>
-      </template>
+
+      <!-- 会话内搜索: 展平每条消息 -->
+      <cell
+        v-if="isConversationSearch"
+        class="search-results__section-item-cell"
+        v-for="item in flatMessageList"
+        :key="'message-' + item.messageID"
+      >
+        <view class="search-results__item-wrapper">
+          <SearchResultItem
+            type="message"
+            :data="item"
+            :keyword="keyword"
+            :Avatar="AvatarComp"
+            @click="handleItemClick"
+          />
+        </view>
+      </cell>
+
+      <!-- 全局搜索: 按会话聚合 -->
+      <cell
+        v-if="!isConversationSearch"
+        class="search-results__section-item-cell"
+        v-for="messageResult in displayMessageResults"
+        :key="'conv-' + messageResult.conversationID"
+      >
+        <view class="search-results__item-wrapper">
+          <SearchResultItem
+            type="conversation"
+            :data="messageResult"
+            :keyword="keyword"
+            :Avatar="AvatarComp"
+            @click="handleItemClick"
+          />
+        </view>
+      </cell>
+
       <cell v-if="showMoreMessage" class="search-results__section-more-cell">
-        <view class="search-results__section-more" @click="handleViewMore('message')">
-          <text class="search-results__section-more-text">查看更多消息</text>
+        <view class="search-results__section-more" @tap="handleViewMore('message')">
+          <text class="search-results__section-more-text">查看更多聊天记录</text>
         </view>
       </cell>
     </list>
   </view>
 </template>
 
-<script setup lang="ts">
-import { computed, ref } from 'vue'
+<script>
 import AvatarComponent from '../Avatar'
-import DefaultSearchResultItem from './SearchResultItem/index.nvue'
-import DefaultPresearch from './placeholders/SearchResultsPresearch.nvue'
-import DefaultLoading from './placeholders/SearchResultsLoading.nvue'
-import DefaultEmpty from './placeholders/SearchResultsEmpty.nvue'
+import SearchResultItem from './SearchResultItem/index.nvue'
+import SearchPresearch from './placeholders/SearchResultsPresearch.nvue'
+import SearchLoading from './placeholders/SearchResultsLoading.nvue'
+import SearchEmpty from './placeholders/SearchResultsEmpty.nvue'
 import { SearchTabValue } from '../../types/search'
-import type { 
-  SearchResultsProps, 
-  SearchResultsEmits,
-  SearchResultType,
-  FriendSearchInfo,
-  MessageSearchResultItem
-} from '../../types/search'
-import type { GroupSearchInfo } from '../../types/group'
-import type { UserProfile } from '../../types/userProfile'
-
-const props = withDefaults(defineProps<SearchResultsProps>(), {
-  keyword: '',
-  conversationID: '',
-  currentTab: SearchTabValue.All,
-  isLoading: false,
-  showPresearch: true,
-  friendList: () => [],
-  groupList: () => [],
-  groupMemberList: () => ({}),
-  messageResults: () => [],
-  conversationList: () => [],
-  hasMoreFriend: false,
-  hasMoreGroup: false,
-  hasMoreGroupMember: false,
-  hasMoreMessage: false,
-  searchHistory: () => [],
-  showCloudSearch: false,
-  SearchResultItem: undefined,
-  PlaceholderEmpty: undefined,
-  PlaceholderLoading: undefined,
-  PlaceholderPresearch: undefined,
-  Avatar: undefined
-})
-
-const emit = defineEmits<SearchResultsEmits>()
-
-const defaultDisplayCount = 3
-
-const isAllTab = computed(() => props.currentTab === SearchTabValue.All)
-
-const isConversationSearch = computed(() => !!props.conversationID)
-
-const SearchResultItemComponent = computed(() => props.SearchResultItem || DefaultSearchResultItem)
-const PresearchComponent = computed(() => props.PlaceholderPresearch || DefaultPresearch)
-const LoadingComponent = computed(() => props.PlaceholderLoading || DefaultLoading)
-const EmptyComponent = computed(() => props.PlaceholderEmpty || DefaultEmpty)
-const AvatarComp = computed(() => props.Avatar || AvatarComponent)
-
-const isEmpty = computed(() => {
-  if (isConversationSearch.value) {
-    // 会话内搜索：只需要 messageResults 为空即展示
-    return !props.messageResults || props.messageResults.length === 0
-  }
-  // 全局搜索：三个列表都为空时展示
-  return (!props.friendList || props.friendList.length === 0) &&
-    (!props.groupList || props.groupList.length === 0) &&
-    (!props.messageResults || props.messageResults.length === 0)
-})
-
-const displayFriendList = computed(() => {
-  if (isAllTab.value) {
-    return props.friendList?.slice(0, defaultDisplayCount) || []
-  }
-  return props.friendList || []
-})
-
-const displayGroupList = computed(() => {
-  if (isAllTab.value) {
-    return props.groupList?.slice(0, defaultDisplayCount) || []
-  }
-  return props.groupList || []
-})
-
-const displayMessageResults = computed(() => {
-  if (isAllTab.value) {
-    return props.messageResults?.slice(0, defaultDisplayCount) || []
-  }
-  return props.messageResults || []
-})
-
-const showMoreFriend = computed(() => {
-  if (isConversationSearch.value) {
-    return false
-  }
-  if (isAllTab.value) {
-    return props.hasMoreFriend || (props.friendList && props.friendList.length > defaultDisplayCount)
-  }
-  return props.hasMoreFriend
-})
-
-const showMoreGroup = computed(() => {
-  if (isConversationSearch.value) {
-    return false
-  }
-  if (isAllTab.value) {
-    return props.hasMoreGroup || (props.groupList && props.groupList.length > defaultDisplayCount)
-  }
-  return props.hasMoreGroup
-})
-
-const showMoreMessage = computed(() => {
-  if (isAllTab.value && !isConversationSearch.value) {
-    return props.hasMoreMessage || (props.messageResults && props.messageResults.length > defaultDisplayCount)
-  }
-  return props.hasMoreMessage
-})
-
-const handleItemClick = (type: SearchResultType | 'conversation', data: any) => {
-  emit('resultItemClick', type, data)
-}
-
-const handleViewMore = (type: SearchResultType) => {
-  emit('viewMore', type)
-}
-
-const handleHistoryClick = (keyword: string) => {
-  emit('historyClick', keyword)
-}
-
-const handleClearHistory = () => {
-  emit('clearHistory')
-}
-
-const handleCloudSearchClick = () => {
-  emit('cloudSearchClick')
+export default {
+  components: { SearchResultItem, SearchPresearch, SearchLoading, SearchEmpty },
+  props: {
+    keyword: { type: String, default: '' }, conversationID: { type: String, default: '' }, currentTab: { type: String, default: 'all' },
+    isLoading: { type: Boolean, default: false }, showPresearch: { type: Boolean, default: true },
+    friendList: { type: Array, default: function() { return [] } }, groupList: { type: Array, default: function() { return [] } },
+    groupMemberList: { type: Object, default: function() { return {} } }, messageResults: { type: Array, default: function() { return [] } },
+    hasMoreFriend: { type: Boolean, default: false }, hasMoreGroup: { type: Boolean, default: false },
+    hasMoreGroupMember: { type: Boolean, default: false }, hasMoreMessage: { type: Boolean, default: false },
+    searchHistory: { type: Array, default: function() { return [] } }, showCloudSearch: { type: Boolean, default: false },
+    Avatar: { type: [Object, Function], default: undefined },
+  },
+  computed: {
+    isAllTab() { return this.currentTab === SearchTabValue.All },
+    isConversationSearch() { return !!this.conversationID },
+    AvatarComp() { return this.Avatar || AvatarComponent },
+    isEmpty() {
+      if (this.isConversationSearch) return !this.messageResults || this.messageResults.length === 0
+      return (!this.friendList || this.friendList.length === 0) && (!this.groupList || this.groupList.length === 0) && (!this.messageResults || this.messageResults.length === 0)
+    },
+    displayFriendList() { return this.isAllTab ? ((this.friendList && this.friendList.slice(0, 3)) || []) : (this.friendList || []) },
+    displayGroupList() { return this.isAllTab ? ((this.groupList && this.groupList.slice(0, 3)) || []) : (this.groupList || []) },
+    displayMessageResults() { return this.isAllTab ? ((this.messageResults && this.messageResults.slice(0, 3)) || []) : (this.messageResults || []) },
+    flatMessageList() {
+      if (!this.isConversationSearch) return []
+      var result = []
+      var list = this.displayMessageResults
+      for (var i = 0; i < list.length; i++) {
+        var msgs = list[i] && list[i].messageList
+        if (msgs) {
+          for (var j = 0; j < msgs.length; j++) {
+            result.push(msgs[j])
+          }
+        }
+      }
+      return result
+    },
+    showMoreFriend() { if (this.isConversationSearch) return false; if (this.isAllTab) return this.hasMoreFriend || (this.friendList && this.friendList.length > 3); return this.hasMoreFriend },
+    showMoreGroup() { if (this.isConversationSearch) return false; if (this.isAllTab) return this.hasMoreGroup || (this.groupList && this.groupList.length > 3); return this.hasMoreGroup },
+    showMoreMessage() { if (this.isAllTab && !this.isConversationSearch) return this.hasMoreMessage || (this.messageResults && this.messageResults.length > 3); return this.hasMoreMessage },
+  },
+  methods: {
+    handleItemClick(type, data) { this.$emit('resultItemClick', type, data) },
+    handleViewMore(type) { this.$emit('viewMore', type) },
+    handleHistoryClick(kw) { this.$emit('historyClick', kw) },
+    handleClearHistory() { this.$emit('clearHistory') },
+    handleCloudSearchClick() { this.$emit('cloudSearchClick') },
+  },
 }
 </script>
 

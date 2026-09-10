@@ -1,128 +1,90 @@
 import { AlbumPickerImpl } from './impl/AlbumPickerImpl';
+// @ts-ignore — uni-app 编译器会正确解析 UTS 插件路径，TS 类型检查可忽略
 import { showAlbumPicker } from '@/uni_modules/tuikit-atomic-x';
 
-export enum AlbumPickerMediaFilter {
-	IMAGE_ONLY = 0,
-	VIDEO_ONLY = 1,
-	IMAGE_AND_VIDEO = 2,
-}
+export var AlbumPickerMediaFilter = {
+  IMAGE_ONLY: 0,
+  VIDEO_ONLY: 1,
+  IMAGE_AND_VIDEO: 2,
+};
 
-export enum AlbumMediaType {
-	IMAGE = 0,
-	VIDEO = 1,
-}
+export var AlbumMediaType = {
+  IMAGE: 0,
+  VIDEO: 1,
+};
 
-export enum AlbumPickerStyle {
-	LIKE_WECHAT = 0,
-	LIKE_WHATSAPP = 1,
-}
+export var AlbumPickerStyle = {
+  LIKE_WECHAT: 0,
+  LIKE_WHATSAPP: 1,
+};
 
-export enum AlbumPickerLanguage {
-	SYSTEM = 0,
-	EN = 1,
-	ZH_HANS = 2,
-	ZH_HANT = 3,
-	AR = 4,
-}
+export var AlbumPickerLanguage = {
+  SYSTEM: 0,
+  EN: 1,
+  ZH_HANS: 2,
+  ZH_HANT: 3,
+  AR: 4,
+};
 
-export enum AlbumPickerCompressQuality {
-	STANDARD = 0,
-	HIGH = 1,
-}
+export var AlbumPickerCompressQuality = {
+  STANDARD: 0,
+  HIGH: 1,
+};
 
-export interface AlbumPickerTheme {
-	primaryColor ?: string;
-	backgroundColor ?: string;
-	backgroundColorSecondary ?: string;
-	textColor ?: string;
-	textColorSecondary ?: string;
-	confirmButtonIconAsset ?: string;
-	bigFontSize ?: number;
-	normalFontSize ?: number;
-	smallFontSize ?: number;
-	bigRadius ?: number;
-	normalRadius ?: number;
-	smallRadius ?: number;
-}
+export function createAlbumPicker() {
+  var listener: any = null;
+  var sessionId = 'album_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 
-export interface AlbumMedia {
-	id : number;
-	mediaType : AlbumMediaType;
-	mediaPath : string;
-	fileExtension : string;
-	fileSize : number;
-	videoThumbnailPath ?: string;
-	duration : number;
-}
+  return {
+    show: function(config: any, theme: any, inListener: any) {
+      listener = inListener;
 
-export interface AlbumPickerConfig {
-	mediaFilter ?: AlbumPickerMediaFilter;
-	maxSelectionCount ?: number;
-	itemsPerRow ?: number;
-	showsCameraItem ?: boolean;
-	style ?: AlbumPickerStyle;
-	language ?: AlbumPickerLanguage;
-	compressQuality ?: AlbumPickerCompressQuality;
-	maxVideoDurationInSeconds ?: number;
-	maxOutputFileSizeInMB ?: number;
-}
+      var nativeConfig = JSON.stringify(AlbumPickerImpl.serializeConfig(config));
+      var nativeTheme = JSON.stringify(AlbumPickerImpl.serializeTheme(theme));
 
-export interface AlbumPickerListener {
-	onPickConfirm ?: (pickedAlbumMedias : AlbumMedia[], textMessage : string | null) => void;
-	onMediaProcessing ?: (albumMedia : AlbumMedia, progress : number, error : boolean) => void;
-	onMediaProcessed ?: () => void;
-	onCancel ?: () => void;
-}
-
-export class AlbumPicker {
-	private impl : AlbumPickerImpl = new AlbumPickerImpl();
-	private listener ?: AlbumPickerListener;
-	private sessionId : string;
-
-	constructor() {
-		this.sessionId = `album_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-	}
-
-	show(config ?: AlbumPickerConfig, theme ?: AlbumPickerTheme, listener ?: AlbumPickerListener) : void {
-		this.listener = listener;
-
-		const nativeConfig = JSON.stringify(this.impl.serializeConfig(config));
-		const nativeTheme = JSON.stringify(this.impl.serializeTheme(theme));
-
-		showAlbumPicker(
-			nativeConfig,
-			nativeTheme,
-			this.sessionId,
-			(jsonStr : string) => {
-				try {
-					const parsed = JSON.parse(jsonStr);
-					const dataList = parsed.pickedAlbumMedias || [];
-					const textMessage = parsed.textMessage || null;
-					const medias = AlbumPickerImpl.parseAlbumMediaList(dataList);
-					this.listener?.onPickConfirm?.(medias, textMessage);
-				} catch (e) {
-					console.error('[AlbumPicker] onPickConfirm parse error:', e);
-				}
-			},
-			(jsonStr : string) => {
-				try {
-					const parsed = JSON.parse(jsonStr);
-					const media = AlbumPickerImpl.parseAlbumMedia(parsed.albumMedia || {});
-					const progress = parsed.progress || 0;
-					const error = parsed.error || false;
-					this.listener?.onMediaProcessing?.(media, progress, error);
-				} catch (e) {
-					console.error('[AlbumPicker] onMediaProcessing parse error:', e);
-				}
-			},
-			() => {
-				this.listener?.onMediaProcessed?.();
-				this.listener = undefined;
-			},
-			() => {
-				this.listener?.onCancel?.();
-				this.listener = undefined;
-			}
-		);
-	}
+      showAlbumPicker(
+        nativeConfig,
+        nativeTheme,
+        sessionId,
+        function(jsonStr: any) {
+          try {
+            var parsed = JSON.parse(jsonStr);
+            var dataList = parsed.pickedAlbumMedias || [];
+            var textMessage = parsed.textMessage || null;
+            var medias = AlbumPickerImpl.parseAlbumMediaList(dataList);
+            if (listener && listener.onPickConfirm) {
+              listener.onPickConfirm(medias, textMessage);
+            }
+          } catch (e) {
+            console.error('[AlbumPicker] onPickConfirm parse error:', e);
+          }
+        },
+        function(jsonStr: any) {
+          try {
+            var parsed = JSON.parse(jsonStr);
+            var media = AlbumPickerImpl.parseAlbumMedia(parsed.albumMedia || {});
+            var progress = parsed.progress || 0;
+            var error = parsed.error || false;
+            if (listener && listener.onMediaProcessing) {
+              listener.onMediaProcessing(media, progress, error);
+            }
+          } catch (e) {
+            console.error('[AlbumPicker] onMediaProcessing parse error:', e);
+          }
+        },
+        function() {
+          if (listener && listener.onMediaProcessed) {
+            listener.onMediaProcessed();
+          }
+          listener = null;
+        },
+        function() {
+          if (listener && listener.onCancel) {
+            listener.onCancel();
+          }
+          listener = null;
+        }
+      );
+    },
+  };
 }

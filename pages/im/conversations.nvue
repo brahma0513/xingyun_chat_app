@@ -1,0 +1,47 @@
+<template>
+    <view class="page">
+        <view class="start-row">
+            <input class="user-input" v-model="targetUser" placeholder="输入对方用户 ID" />
+            <text class="start-button" @tap="startChat">发起单聊</text>
+        </view>
+        <text v-if="imReady" class="account">当前聊天账号：{{ imStatus.userID }}</text>
+        <ConversationList v-if="imReady" :key="imStatus.userID" :filter="singleOnly" @conversationSelect="openChat" />
+        <view v-else class="status" @tap="retryChat">
+            <text class="hint">{{ imStatusText }}</text>
+            <text v-if="imStatus.status !== 'connecting'" class="action">点击重试 / 登录</text>
+        </view>
+    </view>
+</template>
+<script>
+import ConversationList from '@/uni_modules/tuikit-atomic-x/components/ConversationList/ConversationList.nvue';
+import status from '@/utils/im/page-status.js';
+import { singleChatID, chatURL } from '@/utils/im/routes.js';
+export default {
+    mixins: [status],
+    components: { ConversationList },
+    data() { return { targetUser: '' }; },
+    methods: {
+        singleOnly(conversation) { return /^c2c_user_[1-9]\d*$/.test(conversation.conversationID); },
+        openChat(conversation) {
+            if (!this.imReady) return;
+            try { uni.navigateTo({ url: chatURL(conversation.conversationID) + '&title=' + encodeURIComponent(conversation.title || '') }); }
+            catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
+        },
+        startChat() {
+            if (!this.imReady) { this.retryChat(); return; }
+            try { this.openChat({ conversationID: singleChatID(this.targetUser, this.imStatus.userID) }); }
+            catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
+        }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f5f6f8; }
+.start-row { flex-direction: row; align-items: center; padding: 16px; background-color: #ffffff; }
+.user-input { flex: 1; height: 40px; padding-left: 10px; font-size: 14px; background-color: #f5f6f8; border-radius: 6px; }
+.start-button { margin-left: 12px; color: #2878ff; font-size: 15px; }
+.account { padding: 12px; font-size: 12px; color: #888888; }
+.status { flex: 1; align-items: center; justify-content: center; padding: 24px; }
+.hint { color: #666666; font-size: 15px; text-align: center; }
+.action { color: #2878ff; margin-top: 18px; font-size: 15px; }
+</style>

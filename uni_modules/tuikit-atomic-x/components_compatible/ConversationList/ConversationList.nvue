@@ -12,7 +12,7 @@
       <component :is="PlaceholderEmptyList" />
     </view>
 
-    <list v-else class="conversation-list__scroll" :show-scrollbar="false">
+    <list v-else class="conversation-list__scroll" :show-scrollbar="false" @loadmore="loadMore">
       <cell 
         v-for="(conversation, index) in filteredAndSortedList" 
         :key="conversation.conversationID"
@@ -114,6 +114,7 @@ export default {
     return {
       storeInstance,
       isLoading: false,
+      loadingMore: false,
       loadError: null,
       openedSwipeActionId: null,
       isCleaned: false,
@@ -161,6 +162,13 @@ export default {
     this._cleanup()
   },
   methods: {
+    async loadMore() {
+      if (this.loadingMore || !this.storeInstance.state.hasMoreConversations) return
+      this.loadingMore = true
+      try { await this.storeInstance.loadMoreConversations() }
+      catch (_) { uni.showToast({ title: '加载更多会话失败', icon: 'none' }) }
+      finally { this.loadingMore = false }
+    },
     _cleanup() {
       if (this.isCleaned) return
       this.isCleaned = true

@@ -1,131 +1,55 @@
 <template>
   <view class="emoji-panel">
     <list class="emoji-list" :show-scrollbar="false">
-      
-      <cell
-        v-for="(row, rowIndex) in chunkedEmojiList"
-        :key="rowIndex"
-        class="emoji-cell"
-      >
+      <cell v-for="(row, rowIndex) in chunkedEmojiList" :key="rowIndex" class="emoji-cell">
         <view class="emoji-row">
-          <view 
-            v-for="(emoji, colIndex) in row" 
-            :key="colIndex"
-            class="emoji-item"
-            @click="handleEmojiTap(emoji)"
-          >
+          <view v-for="(emoji, colIndex) in row" :key="colIndex" class="emoji-item" @tap="handleEmojiTap(emoji)">
             <text class="emoji-text">{{ emoji.key || emoji }}</text>
           </view>
         </view>
       </cell>
-      
-      <cell>
-        <view style="height: 40rpx;"></view>
-      </cell>
+      <cell><view style="height: 40rpx;"></view></cell>
     </list>
   </view>
 </template>
 
-<script setup>
-import { computed } from 'vue';
+<script>
+var DEFAULT_EMOJIS = [
+  '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
+  '😘','😗','☺️','😚','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔',
+  '🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷',
+  '🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😠','😎','🤓','🧐',
+  '😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭',
+  '😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','🤬','😈','👿','💀','☠️',
+  '🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿',
+  '😾','🙈','🙉','🙊','💋','💌','💘','💝','💖','💗','💓','💞','💕','💟','❣️','💔'
+]
+var COLUMNS = 8
 
-const emit = defineEmits(['select']);
-
-const COLUMNS = 8; // 每一行显示的个数
-
-// 默认数据
-const DEFAULT_EMOJIS = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
-  '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩',
-  '😘', '😗', '☺️', '😚', '😙', '😋', '😛',
-  '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔',
-  '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄',
-  '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷',
-  '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴',
-  '😵', '🤯', '🤠', '🥳', '😠', '😎', '🤓', '🧐',
-  '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳',
-  '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭',
-  '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱',
-  '😤', '😡', '🤬', '😈', '👿', '💀', '☠️',
-  '🤡', '👹', '👺', '👻', '👽', '👾', '🤖',
-  '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿',
-  '😾', '🙈', '🙉', '🙊', '💋', '💌', '💘', '💝',
-  '💖', '💗', '💓', '💞', '💕', '💟', '❣️', '💔',
-];
-
-// 1. 先标准化数据格式
-const normalizedList = computed(() => {
-  return DEFAULT_EMOJIS.map(e => ({ key: e })); // 统一转对象，方便扩展
-});
-
-// 2. 核心算法：将一维数组切片成二维数组
-// [a,b,c...] -> [[a,b,c,d,e,f,g,h], [i...]]
-const chunkedEmojiList = computed(() => {
-  const result = [];
-  const list = normalizedList.value;
-  const len = list.length;
-  
-  for (let i = 0; i < len; i += COLUMNS) {
-    // 截取一行的据
-    result.push(list.slice(i, i + COLUMNS));
+export default {
+  name: 'EmojiPanel',
+  computed: {
+    normalizedList() { return DEFAULT_EMOJIS.map(function(e) { return { key: e } }) },
+    chunkedEmojiList() {
+      var result = []; var list = this.normalizedList
+      for (var i = 0; i < list.length; i += COLUMNS) { result.push(list.slice(i, i + COLUMNS)) }
+      return result
+    }
+  },
+  methods: {
+    handleEmojiTap(emoji) {
+      this.$emit('select', emoji)
+    }
   }
-  return result;
-});
-
-const handleEmojiTap = (emoji) => {
-  emit('select', emoji);
-};
+}
 </script>
 
 <style scoped>
-.emoji-panel {
-  flex: 1;
-  background-color: #fff;
-  padding-top: 23rpx;
-  padding-bottom: 23rpx;
-  /* 防止挂载时的隐式动画 */
-  transform: translateY(0);
-}
-
-.emoji-list {
-  flex: 1;
-  /* nvue 中 list 默认就会撑满父容器，但显式写一下更安全 */
-}
-
-/* Cell 样式 
-  注意：nvue 中 cell 不支持 margin，只能用内部 view 的 padding/margin 来控制间距
-*/
-.emoji-cell {
-  background-color: #fff;
-}
-
-/* 每一行的容器 */
-.emoji-row {
-  flex-direction: row;       /* 必须显式声明横向排列 */
-  padding-left: 48rpx;       /* 整体左边距 */
-  padding-right: 48rpx;      /* 整体右边距 */
-  height: 104rpx;            /* 给每一行定高，性能最好 */
-  align-items: center;       /* 垂直居中 */
-  justify-content: space-around; /* 左对齐，防止最后一行元素被拉伸或两端对齐 */
-}
-
-/* 单个表情容器 */
-.emoji-item {
-  width: 60rpx;             /* 固定宽度 */
-  height: 60rpx;
-  margin-right: 8rpx;       /* item 之间的间距 */
-  justify-content: center;
-  align-items: center;
-  border-radius: 8rpx;
-}
-
-/* 点击态 (Active State) */
-.emoji-item:active {
-  background-color: #e0e0e0;
-}
-
-.emoji-text {
-  font-size: 52rpx;
-  font-family: sans-serif; /* 确保 Emoji 渲染正常 */
-}
+.emoji-panel { flex: 1; background-color: #fff; padding-top: 23rpx; padding-bottom: 23rpx; transform: translateY(0); }
+.emoji-list { flex: 1; }
+.emoji-cell { background-color: #fff; }
+.emoji-row { flex-direction: row; padding-left: 48rpx; padding-right: 48rpx; height: 104rpx; align-items: center; justify-content: space-around; }
+.emoji-item { width: 60rpx; height: 60rpx; margin-right: 8rpx; justify-content: center; align-items: center; border-radius: 8rpx; }
+.emoji-item:active { background-color: #e0e0e0; }
+.emoji-text { font-size: 52rpx; font-family: sans-serif; }
 </style>

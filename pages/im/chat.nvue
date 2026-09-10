@@ -1,0 +1,56 @@
+<template>
+    <view class="page">
+        <CustomNavbar position="fixed" :title="title" :showBack="true" :showMenu="false" @back="goBack" />
+        <view v-if="imReady && conversationID" class="chat-body">
+            <view :style="{ height: messageHeight + 'px' }" @tap="collapse">
+                <MessageList :key="imStatus.userID + conversationID" :conversationID="conversationID"
+                    :inputToolbarHeight="inputToolbarHeight" :inputPanelHeight="inputPanelHeight" @onMessageListTap="collapse" />
+            </view>
+            <MessageInput ref="input" :conversationID="conversationID" :enableVoice="false"
+                :enableTools="false" :enableEmoji="true" :toolList="[]" @heightChange="resizeInput" />
+        </view>
+        <view v-else class="status" @tap="retryChat"><text class="hint">{{ routeError || imStatusText }}</text></view>
+    </view>
+</template>
+<script>
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
+import MessageList from '@/uni_modules/tuikit-atomic-x/components/MessageList/MessageList.nvue';
+import MessageInput from '@/uni_modules/tuikit-atomic-x/components/MessageInput/MessageInput.nvue';
+import status from '@/utils/im/page-status.js';
+import { chatURL } from '@/utils/im/routes.js';
+export default {
+    mixins: [status],
+    components: { CustomNavbar, MessageList, MessageInput },
+    data() {
+        const system = uni.getSystemInfoSync();
+        return { conversationID: '', routeError: '', ownerID: '', inputToolbarHeight: 60, inputPanelHeight: 0,
+            screenHeight: system.screenHeight || system.windowHeight, title: '聊天' };
+    },
+    computed: { messageHeight() { return Math.max(80, this.screenHeight - this.inputToolbarHeight - this.inputPanelHeight); } },
+    watch: {
+        'imStatus.userID'(value) {
+            if (!value) return;
+            if (this.ownerID && this.ownerID !== value) { this.conversationID = ''; this.routeError = '账号已切换，请返回消息列表'; }
+            this.ownerID = value;
+        }
+    },
+    onLoad(options) {
+        try {
+            chatURL(options.conversationID || '');
+            this.conversationID = options.conversationID;
+            this.title = String(options.title || this.conversationID.replace('c2c_', '')).slice(0, 64);
+        } catch (error) { this.routeError = error.message; }
+    },
+    methods: {
+        goBack() { uni.navigateBack(); },
+        collapse() { if (this.$refs.input) this.$refs.input.collapse(); },
+        resizeInput(value) { this.inputToolbarHeight = value.inputToolbarHeight; this.inputPanelHeight = value.inputPanelHeight; }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f9fafc; }
+.chat-body { flex: 1; }
+.status { flex: 1; align-items: center; justify-content: center; padding: 24px; }
+.hint { font-size: 15px; color: #666666; text-align: center; }
+</style>

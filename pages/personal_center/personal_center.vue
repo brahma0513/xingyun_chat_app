@@ -7,6 +7,11 @@
 			<tradePersonal :datas="item" :indexs="index" v-if="userInfo.user_id>0" ></tradePersonal>
 		</block>
 		<pagecom :datas="template_data"></pagecom>
+		<!-- #ifdef APP-PLUS -->
+		<view @tap="$gor('/pages/im/conversations')" style="position:fixed;right:30rpx;bottom:160rpx;z-index:90;background:#2878ff;color:#fff;padding:22rpx 32rpx;border-radius:48rpx;">消息
+			<text v-if="vuex_imUnread > 0" style="position:absolute;right:-8rpx;top:-12rpx;background:#f04452;color:#fff;border-radius:24rpx;min-width:36rpx;padding:4rpx 8rpx;font-size:22rpx;text-align:center;">{{vuex_imUnread > 99 ? '99+' : vuex_imUnread}}</text>
+		</view>
+		<!-- #endif -->
 	</view>
 </template>
 

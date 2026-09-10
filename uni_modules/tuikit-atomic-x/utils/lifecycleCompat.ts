@@ -1,20 +1,19 @@
 /**
- * Vue2/Vue3 生命周期兼容工具
+ * 当前 Vue2 App 的生命周期兼容工具
  * - Vue3: 使用 Composition API（onMounted / onUnmounted）
  * - Vue2: 动态解析，若无 Composition API 支持则返回 noop（由调用方主动释放）
  *
  * 实现要点：
- * - 静态 import 具名 API（onMounted/onUnmounted）——当前项目其它 state 文件已大量使用
+ * - 不静态引用 Vue3 专有导出；Vue2 页面通过 Options API 负责生命周期
  * - 同时 import 默认导出（Vue 构造器）——Vue2+composition-api 时也可能挂在上面
  * - 所有 API 都做 typeof 校验，两边都能安全运行
  */
 
-// @ts-ignore
-import Vue, { onMounted as _maybeOnMounted, onUnmounted as _maybeOnUnmounted } from 'vue';
+import Vue from 'vue';
 
 const VueAny: any = Vue as any;
-const _onMounted: any = _maybeOnMounted;
-const _onUnmounted: any = _maybeOnUnmounted;
+const _onMounted: any = VueAny && VueAny.onMounted;
+const _onUnmounted: any = VueAny && VueAny.onUnmounted;
 
 type LifecycleHook = (cb: () => void) => void;
 

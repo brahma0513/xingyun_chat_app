@@ -1,18 +1,18 @@
 <template>
   <view class="contact-list">
-    <list 
+    <list
       ref="listRef"
-      class="contact-list__scroll" 
+      class="contact-list__scroll"
       :show-scrollbar="false"
     >
-      <cell 
-        v-for="(entry, index) in visibleEntryList" 
+      <cell
+        v-for="(entry, index) in visibleEntryList"
         :key="entry.type"
       >
-        <view 
+        <view
           class="contact-list__entry"
           :class="{ 'contact-list__entry--last': index === visibleEntryList.length - 1 }"
-          @click="handleEntryClick(entry.type)"
+          @tap="handleEntryClick(entry.type)"
         >
           <image class="contact-list__entry-icon" :src="entry.icon" mode="aspectFit" />
           <view class="contact-list__entry-content">
@@ -21,7 +21,7 @@
               <view v-if="entry.badge" class="contact-list__entry-badge">
                   <text class="contact-list__entry-badge-text">{{ entry.badge > 99 ? '99+' : entry.badge }}</text>
               </view>
-              <image class="contact-list__entry-arrow" src="../../../static/icon/arrow-right.png" mode="aspectFit" />
+              <image class="contact-list__entry-arrow" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
             </view>
           </view>
         </view>
@@ -39,244 +39,127 @@
         </view>
       </cell>
 
-      <template v-else v-for="(group, groupIndex) in groupedFriendList" :key="group.letter">
-        <cell 
-          :ref="(el: any) => setLetterCellRef(group.letter, el)"
-          @appear="() => handleLetterAppear(group.letter)"
-          @disappear="() => handleLetterDisappear(group.letter)"
+      <cell
+        v-for="item in showFlatList"
+        :key="item.cellKey"
+        :ref="item.refKey || ''"
+        @appear="item.type === 'letter' ? handleLetterAppear(item.letter) : undefined"
+        @disappear="item.type === 'letter' ? handleLetterDisappear(item.letter) : undefined"
+      >
+        <view v-if="item.type === 'letter'" class="contact-list__index">
+          <text class="contact-list__index-text">{{ item.letter }}</text>
+          <text class="contact-list__index-text">（{{item.count}}）</text>
+        </view>
+        <view
+          v-if="item.type === 'friend'"
+          class="contact-list__friend"
+          :class="{ 'contact-list__friend--selected': selectedContactID === item.friend.userID }"
+          @tap="handleContactClick(item.friend)"
         >
-          <view class="contact-list__index">
-            <text class="contact-list__index-text">{{ group.letter }}</text>
-            <text class="contact-list__index-text">（{{group.friends.length}}）</text>
+          <component
+            :is="Avatar"
+            :src="item.friend.avatarURL || ''"
+            :name="(item.friend && item.friend.friendRemark) || item.friend.nickname || item.friend.userID"
+            :size="80"
+            shape="square"
+            defaultAvatarType="user"
+            pureMode
+          />
+          <view class="contact-list__friend-info">
+            <text class="contact-list__friend-name" :numberOfLines="1">{{ (item.friend && item.friend.friendRemark) || item.friend.nickname || item.friend.userID }}</text>
           </view>
-        </cell>
-        
-        <cell 
-          v-for="friend in group.friends" 
-          :key="friend.userID"
-        >
-          <view 
-            class="contact-list__friend"
-            :class="{ 'contact-list__friend--selected': selectedContactID === friend.userID }"
-            @click="handleContactClick(friend)"
-          >
-            <component 
-              :is="Avatar"
-              :src="friend.avatarURL || ''"
-              :name="friend?.friendRemark || friend.nickname || friend.userID"
-              :size="80"
-              shape="square"
-              defaultAvatarType="user"
-              pureMode
-            />
-            <view class="contact-list__friend-info">
-              <text class="contact-list__friend-name" :numberOfLines="1">{{ friend?.friendRemark || friend.nickname || friend.userID }}</text>
-            </view>
-          </view>
-        </cell>
-      </template>
+        </view>
+      </cell>
 
-      <cell v-if="friendList.length > 0" key="footer">
+      <cell key="footer">
         <view class="contact-list__footer">
-          <text class="contact-list__footer-text">{{ friendList.length }}个好友及联系人</text>
+          <text class="contact-list__footer-text">{{ friendList.length }}位联系人</text>
         </view>
       </cell>
     </list>
 
-    <view 
-      v-if="indexLetters.length > 0"
-      class="contact-list__sidebar-wrapper"
-      :style="{ top: sidebarTopPx + 'px' }"
-      @click.stop
-    >
+    <view v-if="indexLetters.length > 0" class="contact-list__sidebar-wrapper">
       <view class="contact-list__sidebar">
-        <text 
-          v-for="letter in indexLetters" 
-          :key="letter"
+        <text
+          v-for="letter in indexLetters"
+          :key="'sb-' + letter"
           class="contact-list__sidebar-letter"
           :class="{ 'contact-list__sidebar-letter--active': activeLetter === letter }"
-          @click.stop="handleLetterClick(letter)"
+          @tap="handleLetterClick(letter)"
         >{{ letter }}</text>
       </view>
     </view>
   </view>
 </template>
 
-<script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+<script>
 import AvatarComponent from '../../Avatar'
 import DefaultEmptyList from '../placeholders/EmptyList.nvue'
 import DefaultLoading from '../placeholders/Loading.nvue'
 import { useContactState } from '../../../state/ContactState'
 import { useGroupState } from '../../../state/GroupState'
 import { sortByFirstChar } from '../../../utils/sortByFirstChar'
-import type { ContactInfo, EntryType, EntryItem, ContactListProps, ContactListEmits } from '../../../types/contact'
-
-import iconNewContacts from '../../../static/icon/new-contacts.png'
-import iconGroupNotifications from '../../../static/icon/group-notifications.png'
-import iconGroups from '../../../static/icon/groups.png'
-import iconBlacklist from '../../../static/icon/blacklist.png'
-
-const props = withDefaults(defineProps<ContactListProps>(), {
-  Avatar: () => AvatarComponent,
-  PlaceholderEmptyList: () => DefaultEmptyList,
-  PlaceholderLoading: () => DefaultLoading,
-  showNewContact: true,
-  showGroupNotification: true,
-  showMyGroups: true,
-  showBlacklist: true
-})
-
-const emit = defineEmits<ContactListEmits>()
-
-const {
-  friendList,
-  friendApplicationUnreadCount,
-  destroyStore
-} = useContactState()
-
-const {
-  unreadApplicationCount,
-  loadApplications,
-} = useGroupState()
-
-const dom = uni.requireNativePlugin('dom')
-
-const listRef = ref<any>(null)
-const isLoading = ref(false)
-const selectedContactID = ref<string>('')
-const activeLetter = ref<string>('')
-const letterCellRefs: Record<string, any> = {}
-
-const entryList = computed<EntryItem[]>(() => [
-  {
-    type: 'newContact',
-    label: '新的联系人',
-    icon: iconNewContacts,
-    visible: props.showNewContact,
-    badge: friendApplicationUnreadCount.value
+var iconNewContacts = '/uni_modules/tuikit-atomic-x/static/icon/new-contacts.png'
+var iconGroupNotifications = '/uni_modules/tuikit-atomic-x/static/icon/group-notifications.png'
+var iconGroups = '/uni_modules/tuikit-atomic-x/static/icon/groups.png'
+var iconBlacklist = '/uni_modules/tuikit-atomic-x/static/icon/blacklist.png'
+export default {
+  props: {
+    Avatar: { type: [Object, Function], default: function() { return AvatarComponent } },
+    PlaceholderEmptyList: { type: [Object, Function], default: function() { return DefaultEmptyList } },
+    PlaceholderLoading: { type: [Object, Function], default: function() { return DefaultLoading } },
+    showNewContact: { type: Boolean, default: true },
+    showGroupNotification: { type: Boolean, default: true },
+    showMyGroups: { type: Boolean, default: true },
+    showBlacklist: { type: Boolean, default: true },
   },
-  {
-    type: 'groupNotification',
-    label: '群聊通知',
-    icon: iconGroupNotifications,
-    visible: props.showGroupNotification,
-    badge: unreadApplicationCount.value
+  data() {
+    var cs = useContactState(); var gs = useGroupState()
+    return { contactState: cs, groupState: gs, isLoading: false, selectedContactID: '', activeLetter: '', dom: uni.requireNativePlugin('dom'), visibleLetters: {} }
   },
-  {
-    type: 'myGroups',
-    label: '我的群聊',
-    icon: iconGroups,
-    visible: props.showMyGroups
+  computed: {
+    friendList() { return this.contactState.friendList.value || [] },
+    entryList() {
+      return [
+        { type: 'newContact', label: '新的联系人', icon: iconNewContacts, visible: this.showNewContact, badge: this.contactState.friendApplicationUnreadCount.value },
+        { type: 'groupNotification', label: '群聊通知', icon: iconGroupNotifications, visible: this.showGroupNotification, badge: this.groupState.unreadApplicationCount.value },
+        { type: 'myGroups', label: '我的群聊', icon: iconGroups, visible: this.showMyGroups },
+        { type: 'blacklist', label: '黑名单', icon: iconBlacklist, visible: this.showBlacklist },
+      ]
+    },
+    visibleEntryList() { return this.entryList.filter(function(i) { return i.visible }) },
+    sidebarTopPx() { var c = this.visibleEntryList.length; return c * (96 / 750) * uni.getSystemInfoSync().screenWidth },
+    groupedFriendList() {
+      var r = sortByFirstChar(this.friendList, function(item) { return item.friendRemark || item.nickname || item.userID || '' })
+      var letters = Object.keys(r.groupedList).sort(function(a, b) { if (a === '#') return 1; if (b === '#') return -1; return a.localeCompare(b) })
+      return letters.map(function(l) { return { letter: l, friends: r.groupedList[l] } })
+    },
+    showFlatList() {
+      if (this.isLoading || this.friendList.length === 0) return []
+      var result = []
+      this.groupedFriendList.forEach(function(g) {
+        result.push({ type: 'letter', letter: g.letter, count: g.friends.length, cellKey: 'idx-' + g.letter, refKey: 'letter_' + g.letter })
+        g.friends.forEach(function(f) {
+          result.push({ type: 'friend', friend: f, cellKey: 'f-' + f.userID, refKey: '' })
+        })
+      })
+      return result
+    },
+    indexLetters() { return this.groupedFriendList.map(function(g) { return g.letter }) },
   },
-  {
-    type: 'blacklist',
-    label: '黑名单',
-    icon: iconBlacklist,
-    visible: props.showBlacklist
-  }
-])
-
-const visibleEntryList = computed(() => entryList.value.filter(item => item.visible))
-
-
-const ENTRY_ITEM_HEIGHT_RPX = 96
-
-const sidebarTopPx = computed(() => {
-  const entryCount = visibleEntryList.value.length
-  const screenWidth = uni.getSystemInfoSync().screenWidth
-  const entryHeightPx = (ENTRY_ITEM_HEIGHT_RPX / 750) * screenWidth
-  return entryCount * entryHeightPx
-})
-
-const groupedFriendList = computed(() => {
-  const { groupedList } = sortByFirstChar(
-    friendList.value,
-    (item: ContactInfo) => item.friendRemark || item.nickname || item.userID || ''
-  )
-  
-  const letters = Object.keys(groupedList).sort((a, b) => {
-    if (a === '#') return 1
-    if (b === '#') return -1
-    return a.localeCompare(b)
-  })
-  
-  return letters.map(letter => ({
-    letter,
-    friends: groupedList[letter]
-  }))
-})
-
-const indexLetters = computed(() => groupedFriendList.value.map(g => g.letter))
-
-const setLetterCellRef = (letter: string, el: any) => {
-  if (el) {
-    letterCellRefs[letter] = el
-  }
+  watch: { indexLetters: { handler: function(l) { if (l.length > 0 && !this.activeLetter) this.activeLetter = l[0] }, immediate: true } },
+  mounted() { this.groupState.loadApplications() },
+  beforeDestroy() { this.contactState.destroyStore() },
+  beforeUnmount() { this.contactState.destroyStore() },
+  methods: {
+    handleLetterClick(letter) { this.activeLetter = letter; var ref = this.$refs['letter_' + letter]; var el = Array.isArray(ref) ? ref[0] : ref; if (el) this.dom.scrollToElement(el, { offset: 0, animated: false }) },
+    handleLetterAppear(letter) { this.visibleLetters[letter] = true; this.updateActiveLetter() },
+    handleLetterDisappear(letter) { delete this.visibleLetters[letter]; this.updateActiveLetter() },
+    updateActiveLetter() { for (var i = 0; i < this.indexLetters.length; i++) { if (this.visibleLetters[this.indexLetters[i]]) { if (this.activeLetter !== this.indexLetters[i]) this.activeLetter = this.indexLetters[i]; break } } },
+    handleEntryClick(type) { this.$emit('entryClick', type) },
+    handleContactClick(contact) { this.selectedContactID = contact.contactID; this.$emit('contactSelect', contact) },
+  },
 }
-
-const scrollToLetter = (letter: string) => {
-  const targetCell = letterCellRefs[letter]
-  if (!targetCell) return
-  
-  dom.scrollToElement(targetCell, {
-    offset: 0,
-    animated: false
-  })
-}
-
-const handleLetterClick = (letter: string) => {
-  activeLetter.value = letter
-  scrollToLetter(letter)
-}
-
-const visibleLetters = new Set<string>()
-
-const handleLetterAppear = (letter: string) => {
-  visibleLetters.add(letter)
-  updateActiveLetterFromVisible()
-}
-
-const handleLetterDisappear = (letter: string) => {
-  visibleLetters.delete(letter)
-  updateActiveLetterFromVisible()
-}
-
-const updateActiveLetterFromVisible = () => {
-  if (visibleLetters.size === 0) return
-  for (const letter of indexLetters.value) {
-    if (visibleLetters.has(letter)) {
-      if (activeLetter.value !== letter) {
-        activeLetter.value = letter
-      }
-      break
-    }
-  }
-}
-
-const handleEntryClick = (type: EntryType) => {
-  emit('entryClick', type)
-}
-
-const handleContactClick = (contact: ContactInfo) => {
-  selectedContactID.value = contact.contactID
-  emit('contactSelect', contact)
-}
-
-watch(() => indexLetters.value, (letters) => {
-  if (letters.length > 0 && !activeLetter.value) {
-    activeLetter.value = letters[0]
-  }
-}, { immediate: true })
-
-onMounted(async () => {
-  await loadApplications()
-})
-
-
-onBeforeUnmount(() => {
-  destroyStore()
-})
 </script>
 
 <style>

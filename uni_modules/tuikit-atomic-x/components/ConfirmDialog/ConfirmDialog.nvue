@@ -1,7 +1,7 @@
 <template>
   <view v-if="visible" class="confirm-dialog">
-    <view class="confirm-dialog__mask" @click="handleMaskClick"></view>
-    
+    <view class="confirm-dialog__mask" @tap="handleMaskClick"></view>
+
     <view class="confirm-dialog__content">
       <view class="confirm-dialog__header">
         <text class="confirm-dialog__title">{{ title }}</text>
@@ -9,10 +9,10 @@
       </view>
 
       <view class="confirm-dialog__buttons">
-        <view class="confirm-dialog__button" @click="handleCancel">
+        <view class="confirm-dialog__button" @tap="handleCancel">
           <text class="confirm-dialog__button-text confirm-dialog__button-text--cancel">{{ cancelText }}</text>
         </view>
-        <view class="confirm-dialog__button" @click="handleConfirm">
+        <view class="confirm-dialog__button" @tap="handleConfirm">
           <text class="confirm-dialog__button-text confirm-dialog__button-text--confirm">{{ confirmText }}</text>
         </view>
       </view>
@@ -20,72 +20,52 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import { ref, watch } from 'vue'
-
-/** 组件属性 */
-interface ConfirmDialogProps {
-  modelValue?: boolean
-  title?: string
-  message?: string
-  cancelText?: string
-  confirmText?: string
-  closeOnClickMask?: boolean
-}
-
-/** 组件事件 */
-interface ConfirmDialogEmits {
-  (e: 'update:modelValue', value: boolean): void
-  (e: 'confirm'): void
-  (e: 'cancel'): void
-}
-
-const props = withDefaults(defineProps<ConfirmDialogProps>(), {
-  modelValue: false,
-  title: '提示',
-  message: '',
-  cancelText: '取消',
-  confirmText: '确定',
-  closeOnClickMask: true
-})
-
-const emit = defineEmits<ConfirmDialogEmits>()
-
-const visible = ref(props.modelValue)
-
-watch(() => props.modelValue, (newVal) => {
-  visible.value = newVal
-})
-
-const close = () => {
-  visible.value = false
-  emit('update:modelValue', false)
-}
-
-const handleMaskClick = () => {
-  if (props.closeOnClickMask) {
-    close()
-    emit('cancel')
-  }
-}
-
-const handleCancel = () => {
-  close()
-  emit('cancel')
-}
-
-const handleConfirm = () => {
-  close()
-  emit('confirm')
-}
-
-defineExpose({
-  open: () => {
-    visible.value = true
-    emit('update:modelValue', true)
+<script>
+export default {
+  model: { prop: 'modelValue', event: 'update:modelValue' },
+  props: {
+    modelValue: { type: Boolean, default: false },
+    title: { type: String, default: '提示' },
+    message: { type: String, default: '' },
+    cancelText: { type: String, default: '取消' },
+    confirmText: { type: String, default: '确定' },
+    closeOnClickMask: { type: Boolean, default: true },
   },
-  close
-})
+  data() {
+    return {
+      visible: this.modelValue,
+    }
+  },
+  watch: {
+    modelValue(newVal) {
+      this.visible = newVal
+    },
+  },
+  methods: {
+    close() {
+      this.visible = false
+      this.$emit('update:modelValue', false)
+    },
+    open() {
+      this.visible = true
+      this.$emit('update:modelValue', true)
+    },
+    handleMaskClick() {
+      if (this.closeOnClickMask) {
+        this.close()
+        this.$emit('cancel')
+      }
+    },
+    handleCancel() {
+      this.close()
+      this.$emit('cancel')
+    },
+    handleConfirm() {
+      this.close()
+      this.$emit('confirm')
+    },
+  },
+}
 </script>
 
 <style>

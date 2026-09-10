@@ -132,7 +132,7 @@ export function removeListener(options: HybridListenerOptions) {
 export function callAPI(options: string, callback: (result: string) => void) {
   UTSAndroid.getDispatcher("main").async(function (_) {
 
-    console.log('callAPI: options:', options)
+    // Do not log API payloads: login contains UserSig and messages contain private content.
     hybridBridge.callAPI(options, callback)
   }, null)
 }

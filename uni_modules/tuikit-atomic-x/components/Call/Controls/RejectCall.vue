@@ -1,40 +1,48 @@
 <template>
   <view class="btn" @tap="handleReject">
-    <image class="btn-img" :style="[style]" :src="REJECT_SRC"></image>
+    <image class="btn-img" :style="[btnStyle]" :src="REJECT_SRC"></image>
     <text class="btn-text" v-if="isShowText">
       拒绝
     </text>
   </view>
 </template>
 
-<script setup lang="ts">
-  import { computed } from "vue";
-  import REJECT_SRC from "../../../static/icon/hangup.png";
-  import {
-    useCallState
-  } from '@/uni_modules/tuikit-atomic-x/state/CallState';
-  const {
-    reject
-  } = useCallState()
+<script>
+  import { useCallState } from '@/uni_modules/tuikit-atomic-x/state/CallState';
 
-  const props = defineProps({
-    size: {
-      type: Number,
-      default: 60,
+  var REJECT_SRC = '/uni_modules/tuikit-atomic-x/static/icon/hangup.png';
+
+  var callStateInstance = useCallState();
+
+  export default {
+    props: {
+      size: {
+        type: Number,
+        default: 60
+      },
+      isShowText: {
+        type: Boolean,
+        default: true
+      }
     },
-    isShowText: {
-      type: Boolean,
-      default: true,
+    data: function() {
+      return {
+        REJECT_SRC: REJECT_SRC
+      };
     },
-  });
-
-  const style = computed(() => ({
-    width: props.size + "px",
-    height: props.size + "px",
-  }));
-
-  const handleReject = () => {
-    reject();
+    computed: {
+      btnStyle: function() {
+        return {
+          width: this.size + 'px',
+          height: this.size + 'px'
+        };
+      }
+    },
+    methods: {
+      handleReject: function() {
+        callStateInstance.reject();
+      }
+    }
   };
 </script>
 

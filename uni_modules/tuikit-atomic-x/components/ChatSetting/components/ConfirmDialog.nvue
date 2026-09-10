@@ -16,7 +16,7 @@
           <text class="dialog-btn__text dialog-btn__text--cancel">{{ cancelText }}</text>
         </view>
         <view class="dialog-btn dialog-btn--confirm" @tap="handleConfirm">
-          <text 
+          <text
             class="dialog-btn__text dialog-btn__text--confirm"
             :style="{ color: confirmColor }"
           >{{ confirmText }}</text>
@@ -26,125 +26,46 @@
   </Popup>
 </template>
 
-<script setup lang="ts">
-import { ref } from 'vue';
+<script>
 import Popup from './Popup.nvue';
-
-interface ConfirmDialogProps {
-  visible: boolean;
-  title: string;
-  description?: string;
-  cancelText?: string;
-  confirmText?: string;
-  confirmColor?: string;
-  closeOnMaskTap?: boolean;
+export default {
+  components: { Popup },
+  model: { prop: 'visible', event: 'update:visible' },
+  props: {
+    visible: { type: Boolean, default: false },
+    title: { type: String, default: '' },
+    description: { type: String, default: '' },
+    cancelText: { type: String, default: '取消' },
+    confirmText: { type: String, default: '确定' },
+    confirmColor: { type: String, default: '#E54545' },
+    closeOnMaskTap: { type: Boolean, default: true },
+  },
+  methods: {
+    handleConfirm() {
+      this.$emit('confirm')
+      this.$emit('update:visible', false)
+    },
+    handleCancel() {
+      this.$emit('cancel')
+      this.$emit('update:visible', false)
+    },
+    handleVisibleChange(val) { this.$emit('update:visible', val) },
+    handleClose() { this.$emit('cancel') },
+  },
 }
-
-const props = withDefaults(defineProps<ConfirmDialogProps>(), {
-  visible: false,
-  title: '',
-  description: '',
-  cancelText: '取消',
-  confirmText: '确定',
-  confirmColor: '#E54545',
-  closeOnMaskTap: true
-});
-
-const emit = defineEmits<{
-  (e: 'update:visible', value: boolean): void;
-  (e: 'confirm'): void;
-  (e: 'cancel'): void;
-}>();
-
-const popupRef = ref<InstanceType<typeof Popup> | null>(null);
-
-const handleConfirm = () => {
-  popupRef.value?.close(() => {
-    emit('confirm');
-  });
-};
-
-const handleCancel = () => {
-  popupRef.value?.close(() => {
-    emit('cancel');
-  });
-};
-
-const handleVisibleChange = (val: boolean) => {
-  emit('update:visible', val);
-};
-
-const handleClose = () => {
-  emit('cancel');
-};
 </script>
 
 <style scoped>
-.dialog-container {
-  /* background-color: #FFFFFF; */
-  border-radius: 24rpx;
-  overflow: hidden;
-  width: 654rpx;
-}
-
-.dialog-content {
-  padding: 64rpx 48rpx 40rpx;
-}
-
-.dialog-title {
-  font-size: 36rpx;
-  color: rgba(0, 0, 0, 0.9);
-  font-weight: 500;
-  text-align: center;
-}
-
-.dialog-desc {
-  font-size: 32rpx;
-  color: rgba(0, 0, 0, 0.9);
-  margin-top: 12rpx;
-  text-align: center;
-}
-
-.dialog-buttons {
-  flex-direction: row;
-  border-top-width: 1rpx;
-  border-top-style: solid;
-  border-top-color: #E5E5E5;
-}
-
-.dialog-btn {
-  flex: 1;
-  padding: 32rpx 0;
-  justify-content: center;
-  align-items: center;
-  background-color: #FFFFFF;
-}
-
-.dialog-btn:active {
-  background-color: #F5F5F5;
-}
-
-.dialog-btn--cancel {
-  border-right-width: 1rpx;
-  border-right-style: solid;
-  border-right-color: #E5E5E5;
-  border-bottom-left-radius: 24rpx;
-}
-
-.dialog-btn--confirm {
-  border-bottom-right-radius: 24rpx;
-}
-
-.dialog-btn__text {
-  font-size: 32rpx;
-  font-weight: 500;
-}
-
-.dialog-btn__text--cancel {
-  color: rgba(0, 0, 0, 0.9);
-}
-
-.dialog-btn__text--confirm {
-  color: #E54545;
-}
+.dialog-container { border-radius: 24rpx; overflow: hidden; width: 654rpx; }
+.dialog-content { padding: 64rpx 48rpx 40rpx; }
+.dialog-title { font-size: 36rpx; color: rgba(0, 0, 0, 0.9); font-weight: 500; text-align: center; }
+.dialog-desc { font-size: 32rpx; color: rgba(0, 0, 0, 0.9); margin-top: 12rpx; text-align: center; }
+.dialog-buttons { flex-direction: row; border-top-width: 1rpx; border-top-style: solid; border-top-color: #E5E5E5; }
+.dialog-btn { flex: 1; padding: 32rpx 0; justify-content: center; align-items: center; background-color: #FFFFFF; }
+.dialog-btn:active { background-color: #F5F5F5; }
+.dialog-btn--cancel { border-right-width: 1rpx; border-right-style: solid; border-right-color: #E5E5E5; border-bottom-left-radius: 24rpx; }
+.dialog-btn--confirm { border-bottom-right-radius: 24rpx; }
+.dialog-btn__text { font-size: 32rpx; font-weight: 500; }
+.dialog-btn__text--cancel { color: rgba(0, 0, 0, 0.9); }
+.dialog-btn__text--confirm { color: #E54545; }
 </style>

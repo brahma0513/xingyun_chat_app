@@ -6,20 +6,23 @@
   </view>
 </template>
 
-<script setup>
-import { computed } from 'vue'
+<script>
 import { formatTime } from '../../../utils/timeUtils'
 
-const props = defineProps({
-  timestamp: {
-    type: Number,
-    required: true
+export default {
+  name: 'MessageTimeDivider',
+  props: {
+    timestamp: {
+      type: Number,
+      required: true
+    }
+  },
+  computed: {
+    formattedTime() {
+      return formatTime(this.timestamp, true)
+    }
   }
-})
-
-const formattedTime = computed(() => {
-  return formatTime(props.timestamp, true)
-})
+}
 </script>
 
 <style>

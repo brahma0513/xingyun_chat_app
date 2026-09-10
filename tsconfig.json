@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "strict": true,
+    "jsx": "preserve",
+    "importHelpers": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] },
+    "lib": ["esnext", "dom", "dom.iterable"]
+  },
+  "include": ["types/**/*.d.ts"],
+  "exclude": ["node_modules", "unpackage", ".codex"]
+}

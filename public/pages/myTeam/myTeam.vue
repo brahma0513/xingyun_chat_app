@@ -71,6 +71,9 @@
 		          <text>{{item.weixin_name}}</text>
 		          <text class="team-detail-time" v-if="item.createtime">{{item.createtime}}</text>
 		        </view>
+		        <!-- #ifdef APP-PLUS -->
+		        <SendMessageButton :user-id="item.id" :nickname="item.weixin_name || ''" />
+		        <!-- #endif -->
 		        <view class="team-detail-content-order">订单:{{item.finish_order_num}}</view>
 		        <view class="team-detail-content-consume">消费金额<block v-if="amount_type == 1">（实付）</block>:{{item.finish_order_money}}元<text class="push-num">直推数：{{item.direct_push}}</text></view>
 		        <view class="team-detail-content-consume">销售金额<block v-if="amount_type == 1">（实付）</block>:{{item.direct_order_money}}元</view>
@@ -121,8 +124,10 @@
 
 <script>
 	import myTeam from './myTeam.js'
+	import SendMessageButton from '@/components/im/SendMessageButton.vue'
 	export default {
 	  ...myTeam,
+	  components: { SendMessageButton },
 	}
 </script>
 

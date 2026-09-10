@@ -8,6 +8,9 @@
 		      <image class="teamDetail-top-img" :src="headimgurl" />
 		      <view class="teamDetail-content">
 		        <view class="teamDetail-content-top">{{name}}</view>
+		        <!-- #ifdef APP-PLUS -->
+		        <SendMessageButton :user-id="user_id" :nickname="name || ''" />
+		        <!-- #endif -->
 		        <view>
 		          <text v-for="(item,index) in power" :key="index" class="teamDetail-content-power">{{item}}</text>
 		        </view>
@@ -134,8 +137,10 @@
 
 <script>
 	import teamDetail from './teamDetail.js'
+	import SendMessageButton from '@/components/im/SendMessageButton.vue'
 	export default {
 	  ...teamDetail,
+	  components: { SendMessageButton },
 	}
 </script>
 

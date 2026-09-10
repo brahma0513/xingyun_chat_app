@@ -10,11 +10,8 @@ export {
   AlbumMediaType,
   AlbumPickerStyle,
   AlbumPickerLanguage,
-  AlbumPickerTheme,
-  AlbumMedia,
-  AlbumPickerConfig,
-  AlbumPickerListener,
-  AlbumPicker,
+  AlbumPickerCompressQuality,
+  createAlbumPicker,
 } from './AlbumPicker';
 
 export { AlbumPickerImpl } from './impl/AlbumPickerImpl';

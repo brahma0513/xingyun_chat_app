@@ -1,6 +1,6 @@
-import { computed } from 'vue'
 import { UserPickerType } from '../../../types/userpicker'
-import { type UserPickerHook, type UserPickerHookResult } from './types'
+import { type UserPickerHook, type UserPickerHookResult, type User } from './types'
+import { makeReactive } from '../../../utils/reactiveCompat'
 
 // Hook 导入
 import { useStartC2CConversation } from './useStartC2CConversation'
@@ -16,10 +16,7 @@ import { useSelectGroupMember } from './useSelectGroupMember'
 
 declare const uni: any
 
-// ============================================================================
 // Hook 注册表
-// ============================================================================
-
 const hooks = new Map<UserPickerType, UserPickerHook>([
   [UserPickerType.C2C_CONVERSATION, useStartC2CConversation],
   [UserPickerType.CREATE_GROUP, useCreateGroup],
@@ -35,10 +32,7 @@ const hooks = new Map<UserPickerType, UserPickerHook>([
   [UserPickerType.SELECT_GROUP_AT_USER, useSelectGroupMember],
 ])
 
-// ============================================================================
 // 类型 → 默认 routeParams（在调用 hook 前 merge 进 routeParams，调用方无需关心开关）
-// ============================================================================
-
 const typeDefaults: Partial<Record<UserPickerType, Record<string, any>>> = {
   [UserPickerType.SELECT_GROUP_AT_USER]: {
     singleSelect: true,
@@ -50,19 +44,15 @@ const typeDefaults: Partial<Record<UserPickerType, Record<string, any>>> = {
   },
 }
 
-// ============================================================================
-// 核心 API
-// ============================================================================
-
 /**
- * 创建默认的 Hook 结果（用于未知类型）
+ * 创建默认的 Hook 结果
  */
 const createDefaultHookResult = (): UserPickerHookResult => ({
-  userList: computed(() => []),
-  lockedItems: computed(() => []),
+  userList: makeReactive({ value: [] as User[] }),
+  lockedItems: makeReactive({ value: [] as string[] }),
   maxCount: 500,
   title: '选择用户',
-  hasMore: computed(() => false),
+  hasMore: makeReactive({ value: false }),
   handleConfirm: async () => {
     uni.showToast({ title: '不支持的操作类型', icon: 'none' })
   },
@@ -71,24 +61,17 @@ const createDefaultHookResult = (): UserPickerHookResult => ({
 
 /**
  * 使用 UserPicker Hook
- * 根据类型返回对应的 Hook 结果；类型默认 routeParams 会在传入用户值之前先 merge
  */
 export function useUserPicker(type: number, routeParams?: any): UserPickerHookResult {
   const hook = hooks.get(type)
-
   if (!hook) {
     console.warn(`[useUserPicker] Unknown type: ${type}`)
     return createDefaultHookResult()
   }
-
   const defaults = typeDefaults[type as UserPickerType] || {}
-  const mergedParams = { ...defaults, ...(routeParams || {}) }
+  const mergedParams = Object.assign({}, defaults, routeParams || {})
   return hook(mergedParams)
 }
-
-// ============================================================================
-// 工具函数
-// ============================================================================
 
 /**
  * 获取类型名称
@@ -107,12 +90,7 @@ export function getTypeName(type: number): string {
     [UserPickerType.SELECT_GROUP_MEMBER]: '选择群成员',
     [UserPickerType.SELECT_GROUP_AT_USER]: '选择 @ 群成员'
   }
-
   return typeNames[type] || `未知类型(${type})`
 }
-
-// ============================================================================
-// 类型导出
-// ============================================================================
 
 export { type User, type UserPickerHookResult, type UserPickerHook } from './types'

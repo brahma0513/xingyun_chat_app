@@ -7,23 +7,23 @@
         <!-- 群名称 -->
         <view class="form-item form-item--first">
           <text class="form-label">群名称</text>
-          <input 
+          <input
             ref="groupNameInput"
-            class="form-input" 
-            v-model="groupName" 
-            placeholder="输入群名称" 
-            maxlength="20" 
+            class="form-input"
+            v-model="groupName"
+            placeholder="输入群名称"
+            maxlength="20"
           />
         </view>
 
         <!-- 群ID -->
         <view class="form-item form-item--connected">
           <text class="form-label">群ID（选填）</text>
-          <input 
+          <input
             ref="groupIdInput"
-            class="form-input" 
-            v-model="groupID" 
-            placeholder="输入群 ID" 
+            class="form-input"
+            v-model="groupID"
+            placeholder="输入群 ID"
           />
         </view>
 
@@ -32,7 +32,7 @@
           <text class="form-label">群类型</text>
           <view class="form-value">
             <text class="form-text">{{ selectedGroupType.name }}</text>
-            <image class="arrow-icon" src="/static/icon/arrow.png" />
+            <image class="arrow-icon" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
           </view>
         </view>
 
@@ -49,16 +49,11 @@
             <view v-for="(avatar, index) in DEFAULT_GROUP_AVATARS" :key="index" class="avatar-wrapper"
               :class="{ 'avatar-wrapper--selected': selectedAvatarIndex === index }" @tap="handleAvatarSelect(index)">
               <view class="avatar-item">
-                <image 
-                  class="avatar-image" 
-                  :src="avatar" 
+                <image
+                  class="avatar-image"
+                  :src="avatar"
                   mode="aspectFill"
-                  @load="onAvatarLoad(index)"
-                  @error="onAvatarError(index)"
                 />
-                <view v-if="!avatarLoadedMap[index]" class="avatar-loading">
-                  <view class="loading-placeholder"></view>
-                </view>
               </view>
             </view>
           </view>
@@ -75,240 +70,101 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useLoginState } from '../../state/LoginState';
+<script>
+import { useLoginState } from '../../state/LoginState'
 import { useGroupState } from '../../state/GroupState'
-import { useMessageInputState } from '../../state/MessageInputState';
-import type { SendMessagePayload } from '../../types/message';
-import { GROUP_TYPES, DEFAULT_GROUP_AVATARS, getGroupTypeById, type GroupType } from '../../constants/groupTypes';
-import { safeJsonParse } from '../../utils/utsUtils';
+import { useMessageInputState } from '../../state/MessageInputState'
+import { GROUP_TYPES, DEFAULT_GROUP_AVATARS, getGroupTypeById } from '../../constants/groupTypes'
+import { safeJsonParse } from '../../utils/utsUtils'
 
-const { loginUserInfo } = useLoginState();
-const { createGroup } = useGroupState()
-
-// 声明 uni 全局对象
-declare const uni: any
-
-// Props
-interface Props {
-  /** 选中的用户列表 */
-  selectedUsers?: Array<{ userID: string; nickname: string }>
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  selectedUsers: () => []
-})
-
-// Emits
-const emit = defineEmits<{
-  back: []
-  create: [groupInfo: {
-    groupName: string
-    groupID: string
-    groupType: string
-    avatarURL: string
-    memberList: string[]
-  }]
-}>()
-
-// 响应式数据
-const groupName = ref('')
-const groupID = ref('')
-const selectedAvatarIndex = ref(0)
-const avatarLoadedMap = ref<Record<number, boolean>>({})
-
-// input 引用
-const groupNameInput = ref()
-const groupIdInput = ref()
-
-// 使用常量中的群类型列表
-const groupTypes = GROUP_TYPES
-const selectedGroupType = ref<GroupType>(groupTypes[0])
-/**
- * 创建中标志：防止重复点击导致并发调用 createGroup 创建出多个同名群组
- *
- * 释放策略（关键）：
- * - 失败路径：立即释放，允许用户重试
- * - 成功路径：**不释放**！跳转链路 sendCustomMessage → navigateBack → navigateTo 是异步的，
- *   navigateBack 动画期间当前页仍可见且 tap 仍能触发，释放就会被重复点击。
- *   只在 onMounted（即用户重新进入本页）时统一重置，确保跳转期间按钮始终 disabled。
- */
-const isCreating = ref(false)
-
-// 计算属性
-const canCreate = computed(() => {
-  return groupName.value.trim().length > 0 && !isCreating.value
-})
-
-// 页面生命周期 - 监听页面显示
-onMounted(() => {
-  // 重新进入本页面时重置创建态：处理"成功跳转后又退回本页继续建群"的场景
-  // 这是 isCreating 在成功路径下的唯一释放点
-  isCreating.value = false
-  // 监听群类型选择结果
-  uni.$on('groupTypeSelected', (groupType: GroupType) => {
-    selectedGroupType.value = groupType
-  })
-})
-
-// 组件卸载时移除监听
-onUnmounted(() => {
-  uni.$off('groupTypeSelected')
-})
-
-/**
- * 头像加载完成
- */
-const onAvatarLoad = (index: number) => {
-  avatarLoadedMap.value[index] = true
-}
-
-/**
- * 头像加载失败
- */
-const onAvatarError = (index: number) => {
-  avatarLoadedMap.value[index] = true // 即使失败也隐藏加载状态
-  console.warn(`群头像 ${index} 加载失败`)
-}
-
-/**
- * 让所有 input 失焦
- */
-const blurAllInputs = () => {
-  // 让群名称输入框失焦
-  if (groupNameInput.value) {
-    groupNameInput.value.blur()
-  }
-  // 让群ID输入框失焦
-  if (groupIdInput.value) {
-    groupIdInput.value.blur()
-  }
-}
-
-/**
- * 选择群类型 - 跳转到群类型选择页面
- */
-const handleGroupTypeSelect = () => {
-  // 先让所有输入框失焦
-  blurAllInputs()
-  
-  // 直接跳转
-  uni.navigateTo({
-    url: '/pages/scenes/chat/groupTypeInfo/groupTypeInfo'
-  })
-}
-
-/**
- * 选择头像
- */
-const handleAvatarSelect = (index: number) => {
-  selectedAvatarIndex.value = index
-}
-
-/**
- * 处理群组创建成功后的逻辑
- *
- * 跳转链路：sendCustomMessage（异步）→ navigateBack(delta=2)（异步）→ navigateTo（新会话页）
- *
- * 注意：本函数不释放 isCreating。
- * 跳转过程中本页仍处于栈中，导航动画期间按钮仍可触发 @tap，若释放就会被重复点击。
- * isCreating 由 onMounted 在用户重新进入本页时统一重置。
- *
- * @param groupID 创建成功的群组ID
- */
-const handleGroupCreatedSuccess = async (groupID: string) => {
-  const conversationID = `group_${groupID}`
-
-  const messageInputState = useMessageInputState({
-    conversationID: conversationID
-  });
-
-  try {
-    // 等待入群提示消息发送完成（含落库），避免 chat 页 loadMessages 拉不到这条消息
-    const customPayload: SendMessagePayload = {
-      type: 'custom',
-      customData: JSON.stringify({
-        version: 1,
-        businessID: 'group_create',
-        opUser: loginUserInfo.value?.userID || '',
-        content: '创建群聊',
-        cmd: 0,
-      }),
-    };
-    await messageInputState?.sendMessage(customPayload);
-  } catch (e) {
-    console.error('[CreateGroup] sendMessage(custom) failed:', e);
-  }
-
-  uni.navigateBack({
-    delta: 2,
-    success: () => {
-      uni.navigateTo({
-        url: `/pages/scenes/chat/chat/index?conversationID=${conversationID}`
+export default {
+  props: { selectedUsers: { type: Array, default: function() { return [] } } },
+  data() {
+    var loginState = useLoginState(); var groupState = useGroupState()
+    return { loginState: loginState, groupState: groupState, groupName: '', groupID: '', selectedAvatarIndex: 0, groupTypes: GROUP_TYPES, selectedGroupType: GROUP_TYPES[0], DEFAULT_GROUP_AVATARS: DEFAULT_GROUP_AVATARS, isCreating: false }
+  },
+  computed: { canCreate() { return this.groupName.trim().length > 0 && !this.isCreating } },
+  mounted() {
+    var self = this
+    // 重新进入本页面时重置创建态：处理"成功跳转后又退回本页继续建群"的场景
+    // 这是 isCreating 在成功路径下的唯一释放点
+    this.isCreating = false
+    uni.$on('groupTypeSelected', function(gt) { self.selectedGroupType = gt })
+  },
+  beforeDestroy() { uni.$off('groupTypeSelected') },
+  beforeUnmount() { uni.$off('groupTypeSelected') },
+  methods: {
+    handleGroupTypeSelect() { uni.navigateTo({ url: '/pages/scenes/chat/groupTypeInfo/groupTypeInfo' }) },
+    handleAvatarSelect(index) { this.selectedAvatarIndex = index },
+    /**
+     * 处理群组创建成功后的逻辑
+     * 不释放 isCreating：跳转期间本页仍在栈中、tap 仍可触发，释放就会被重复点击。
+     * 由 mounted 在用户重新进入本页时统一重置。
+     */
+    handleGroupCreatedSuccess(groupID) {
+      var conversationID = 'group_' + groupID
+      var messageInputState = useMessageInputState({ conversationID: conversationID })
+      var loginInfo = this.loginState.loginUserInfo
+      var doNavigate = function() {
+        uni.navigateBack({
+          delta: 2,
+          success: function() {
+            uni.navigateTo({ url: '/pages/scenes/chat/chat/index?conversationID=' + conversationID })
+          }
+        })
+      }
+      if (messageInputState) {
+        var customPayload = {
+          type: 'custom',
+          customData: JSON.stringify({
+            version: 1,
+            businessID: 'group_create',
+            opUser: (loginInfo && loginInfo.value && loginInfo.value.userID) || '',
+            content: '创建群聊',
+            cmd: 0,
+          }),
+        }
+        messageInputState.sendMessage(customPayload).finally(doNavigate)
+      } else {
+        doNavigate()
+      }
+    },
+    handleCreate() {
+      // 防重：isCreating=true 期间任何 tap 直接 return
+      // 失败路径会重置；成功路径不重置，由 mounted 在重新进入本页时重置
+      if (!this.canCreate || this.isCreating) return
+      this.isCreating = true
+      var self = this
+      // uni.$selectedUserData 由 UserPicker 序列化为 JSON 字符串传递；GroupCreateParams.memberList 期望 string[]
+      var memberList = safeJsonParse(uni.$selectedUserData, [])
+      this.groupState.createGroup({ groupType: (this.selectedGroupType && this.selectedGroupType.id), groupName: this.groupName, groupID: this.groupID, avatarURL: DEFAULT_GROUP_AVATARS[this.selectedAvatarIndex], memberList: memberList }).then(function(createdGroupID) {
+        if (!createdGroupID) {
+          uni.showToast({ title: '创建群组失败，请重试', icon: 'none' })
+          // 失败可重试，立即释放
+          self.isCreating = false
+          return
+        }
+        // 成功路径：isCreating 不在此处释放，由 mounted 在重新进入本页时统一重置
+        self.handleGroupCreatedSuccess(createdGroupID)
+      }).catch(function(error) {
+        var rawMsg = (error && error.message) ? String(error.message) : ''
+        var errMsg = rawMsg || '创建群组失败，请重试'
+        // 安全打击词识别：错误码 80001
+        // message 形如：'group info secure check fail! beat word: xxx |requestid:...|tcloudapirequestid:...'
+        // 提取 'beat word:' 后到 '|' 前的内容作为被打击词展示
+        if (error && error.errCode === 80001) {
+          var match = rawMsg.match(/beat word:\s*([^|]+?)\s*(\||$)/i)
+          var beatWord = match ? match[1].trim() : ''
+          errMsg = beatWord
+            ? '创建群组失败，存在被打击词汇：' + beatWord
+            : '创建群组失败，存在被打击词汇'
+        }
+        uni.showToast({ title: errMsg, icon: 'none' })
+        // 失败可重试，释放
+        self.isCreating = false
       })
-    }
-  });
-}
-
-/**
- * 创建群聊
- */
-const handleCreate = async () => {
-  // 防重：isCreating=true 期间任何 tap 直接 return
-  // 失败路径会重置；成功路径不重置，由 onMounted 在重新进入本页时重置
-  if (!canCreate.value || isCreating.value) {
-    return
-  }
-  isCreating.value = true
-
-  try {
-    // uni.$selectedUserData 由 UserPicker 序列化为 JSON 字符串传递；
-    // GroupCreateParams.memberList 期望是 string[]，需先 parse
-    const memberList = safeJsonParse<string[]>(uni.$selectedUserData, []);
-    const createdGroupID = await createGroup({
-      groupType: selectedGroupType.value?.id,
-      groupName: groupName.value,
-      groupID: groupID.value,
-      avatarURL: DEFAULT_GROUP_AVATARS[selectedAvatarIndex.value],
-      memberList
-    })
-    
-    // 检查群组ID是否有效
-    if (!createdGroupID) {
-      uni.showToast({
-        title: '创建群组失败，请重试',
-        icon: 'none'
-      })
-      // 失败可重试，立即释放
-      isCreating.value = false
-      return
-    }
-    
-    // 创建成功：isCreating 不在此处释放，由 onMounted 在重新进入本页时统一重置
-    handleGroupCreatedSuccess(createdGroupID)
-    
-  } catch (error) {
-    let errMsg = error.message || '创建群组失败，请重试'
-    // 安全打击词识别：错误码 80001
-    // message 形如：'group info secure check fail! beat word: xxx |requestid:...|tcloudapirequestid:...'
-    // 提取 'beat word:' 后到 '|' 前的内容作为被打击词展示
-    const rawMsg = String(error.message || '')
-    if (error && error.errCode === 80001) {
-      const match = rawMsg.match(/beat word:\s*([^|]+?)\s*(\||$)/i)
-      const beatWord = match ? match[1].trim() : ''
-      errMsg = beatWord
-        ? `创建群组失败，存在被打击词汇：${beatWord}`
-        : '创建群组失败，存在被打击词汇'
-    }
-
-    uni.showToast({
-      title: errMsg,
-      icon: 'none'
-    })
-    // 失败可重试，释放
-    isCreating.value = false
-  }
+    },
+  },
 }
 </script>
 
@@ -341,7 +197,7 @@ const handleCreate = async () => {
 }
 
 .form-item--first {
-  
+
 }
 
 .form-item--connected {

@@ -53,6 +53,8 @@ const store = new Vuex.Store({
 	state: {
 		// IM 状态不写入本地缓存，UserSig 与 SDK 实例不进入 Vuex。
 		vuex_im: { status: 'idle', userID: '', sdkAppID: 0, error: '' },
+		vuex_imUnread: 0,
+		vuex_imProfileStatus: 'idle',
 		// 如果上面从本地获取的lifeData对象下有对应的属性，就赋值给state中对应的变量
 		// 加上vuex_前缀，是防止变量名冲突，也让人一目了然
 		vuex_base:   base,

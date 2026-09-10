@@ -38,7 +38,7 @@
           />
           <view class="result-item__video-play">
             <image
-              src="../../../static/icon/play.png"
+              src="/uni_modules/tuikit-atomic-x/static/icon/play.png"
               class="result-item__video-play-icon"
               mode="aspectFill"
             />
@@ -46,19 +46,19 @@
         </view>
         <view v-else-if="mediaType === 'sound'" class="result-item__audio">
           <image
-            src="../../../static/icon/audio.png"
+            src="/uni_modules/tuikit-atomic-x/static/icon/audio.png"
             class="result-item__audio-icon"
             mode="aspectFill"
           />
-          <text class="result-item__audio-duration">{{ formatSoundDuration(mediaInfo?.duration) }}</text>
+          <text class="result-item__audio-duration">{{ formatSoundDuration((mediaInfo && mediaInfo.duration)) }}</text>
         </view>
         <view v-else-if="mediaType === 'file'" class="result-item__file">
           <view class="result-item__file-icon">
             <text class="result-item__file-icon-text">{{ fileIconText }}</text>
           </view>
           <view class="result-item__file-info">
-            <text class="result-item__file-name" :lines="1">{{ mediaInfo?.fileName || '未知文件' }}</text>
-            <text class="result-item__file-size">{{ formatFileSize(mediaInfo?.fileSize) }}</text>
+            <text class="result-item__file-name" :lines="1">{{ (mediaInfo && mediaInfo.fileName) || '未知文件' }}</text>
+            <text class="result-item__file-size">{{ formatFileSize((mediaInfo && mediaInfo.fileSize)) }}</text>
           </view>
         </view>
         <image
@@ -67,233 +67,90 @@
           class="result-item__face"
           mode="aspectFit"
         />
-        <template v-for="(segment, index) in subtitleSegments" :key="index">
-          <text
-            v-if="segment.type === 'text'"
-            :class="segment.highlight ? 'result-item__subtitle--highlight' : 'result-item__subtitle'"
-          >{{ segment.text }}</text>
-          <image
-            v-else-if="segment.type === 'emoji'"
-            :src="segment.src"
-            class="result-item__emoji"
-          />
-        </template>
+        <text
+          v-for="(segment, index) in subtitleTextSegments"
+          :key="'st-' + index"
+          :class="segment.highlight ? 'result-item__subtitle--highlight' : 'result-item__subtitle'"
+        >{{ segment.text }}</text>
+        <image
+          v-for="(segment, index) in subtitleEmojiSegments"
+          :key="'se-' + index"
+          :src="segment.src"
+          class="result-item__emoji"
+        />
       </view>
-    </view>
-    <view v-if="RightContent" class="result-item__right">
-      <component :is="RightContent" />
     </view>
   </view>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue'
-import type { Component } from 'vue'
+<script>
 import AvatarComponent from '../../Avatar'
-import { parseTextToSegments, truncateSegments, type MessageSegment } from '../../ConversationList/utils'
-
-interface MediaInfo {
-  duration?: number
-  fileName?: string
-  fileSize?: number
-  faceIndex?: number
-  faceName?: string
-}
-
-interface ResultItemProps {
-  avatarURL?: string
-  title?: string
-  titleSuffix?: string
-  RightContent?: Component
-  subtitle?: string
-  keyword?: string
-  Avatar?: Component
-  mediaType?: 'image' | 'video' | 'file' | 'sound' | 'face' | ''
-  mediaSrc?: string
-  mediaInfo?: MediaInfo
-  /** 默认头像类型：none | user | work | public | meeting | avchatroom */
-  defaultAvatarType?: string
-}
-
-const props = withDefaults(defineProps<ResultItemProps>(), {
-  avatarURL: '',
-  title: '',
-  titleSuffix: '',
-  subtitle: '',
-  keyword: '',
-  Avatar: () => AvatarComponent,
-  mediaType: '',
-  mediaSrc: '',
-  mediaInfo: () => ({}),
-  defaultAvatarType: 'none'
-})
-
-const formatSoundDuration = (duration?: number) => {
-  if (!duration) return `0''`
-  const seconds = Math.floor(duration)
-  return `${seconds}''`
-}
-
-const formatFileSize = (size?: number) => {
-  if (!size) return '0 B'
-  
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let fileSize = size
-  let unitIndex = 0
-  
-  while (fileSize >= 1024 && unitIndex < units.length - 1) {
-    fileSize /= 1024
-    unitIndex++
-  }
-  
-  return `${fileSize.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
-}
-
-const fileIconText = computed(() => {
-  const fileName = props.mediaInfo?.fileName || ''
-  const ext = fileName.split('.').pop()?.toLowerCase()
-  if (!ext || ext === 'unknown') return 'F'
-  return ext.charAt(0).toUpperCase()
-})
-
-const faceImageUrl = computed(() => {
-  const index = props.mediaInfo?.faceIndex || 0
-  const name = props.mediaInfo?.faceName || ''
-  
-  const faceMap: Record<number, string> = {
-    0: '/static/emoji/smile.png',
-    1: '/static/emoji/laugh.png',
-    2: '/static/emoji/cry.png',
-    3: '/static/emoji/angry.png',
-    4: '/static/emoji/surprise.png',
-    5: '/static/emoji/love.png',
-    6: '/static/emoji/sad.png',
-    7: '/static/emoji/cool.png',
-    8: '/static/emoji/wink.png',
-    9: '/static/emoji/kiss.png'
-  }
-  
-  if (name) {
-    const nameMap: Record<string, string> = {
-      'smile': '/static/emoji/smile.png',
-      'laugh': '/static/emoji/laugh.png',
-      'cry': '/static/emoji/cry.png',
-      'angry': '/static/emoji/angry.png',
-      'surprise': '/static/emoji/surprise.png',
-      'love': '/static/emoji/love.png',
-      'sad': '/static/emoji/sad.png',
-      'cool': '/static/emoji/cool.png',
-      'wink': '/static/emoji/wink.png',
-      'kiss': '/static/emoji/kiss.png'
-    }
-    if (nameMap[name]) {
-      return nameMap[name]
-    }
-  }
-  
-  return faceMap[index] || faceMap[0]
-})
-
-interface TextSegment {
-  type: 'text'
-  text: string
-  highlight?: boolean
-}
-
-interface EmojiSegment {
-  type: 'emoji'
-  src: string
-}
-
-type Segment = TextSegment | EmojiSegment
-
-function splitByKeyword(text: string, keyword: string): TextSegment[] {
-  if (!text) return []
-  if (!keyword) return [{ type: 'text', text, highlight: false }]
-
-  const segments: TextSegment[] = []
-  const lowerText = text.toLowerCase()
-  const lowerKeyword = keyword.toLowerCase()
-  let lastIndex = 0
-  let index = lowerText.indexOf(lowerKeyword)
-
-  while (index !== -1) {
-    if (index > lastIndex) {
-      segments.push({ type: 'text', text: text.slice(lastIndex, index), highlight: false })
-    }
-    segments.push({ type: 'text', text: text.slice(index, index + keyword.length), highlight: true })
-    lastIndex = index + keyword.length
-    index = lowerText.indexOf(lowerKeyword, lastIndex)
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: text.slice(lastIndex), highlight: false })
-  }
-
-  return segments.length > 0 ? segments : [{ type: 'text', text, highlight: false }]
-}
-
-const MAX_SUBTITLE_LENGTH = 30
-
-/**
- * 在已解析的 segments 上叠加关键词高亮（emoji segment 透传，text segment 按 keyword 拆分）
- */
-function applyKeywordHighlight(segments: MessageSegment[], keyword: string): Segment[] {
-  if (!keyword) {
-    return segments.map<Segment>((seg) => {
-      if (seg.type === 'emoji') {
-        return { type: 'emoji', src: seg.src || '' }
+import { parseTextToSegments, truncateSegments } from '../../ConversationList/utils'
+export default {
+  props: {
+    avatarURL: { type: String, default: '' }, title: { type: String, default: '' }, titleSuffix: { type: String, default: '' },
+    RightContent: { type: [Object, Function], default: undefined }, subtitle: { type: String, default: '' }, keyword: { type: String, default: '' },
+    Avatar: { type: [Object, Function], default: function() { return AvatarComponent } },
+    mediaType: { type: String, default: '' }, mediaSrc: { type: String, default: '' },
+    mediaInfo: { type: Object, default: function() { return {} } }, defaultAvatarType: { type: String, default: 'none' },
+  },
+  computed: {
+    titleSegments() { return this.splitByKeyword(this.title, this.keyword) },
+    titleSuffixSegments() { return this.splitByKeyword(this.titleSuffix, this.keyword) },
+    subtitleSegments() { return this.buildSubtitleSegments(this.subtitle, this.keyword) },
+    subtitleTextSegments() { return this.subtitleSegments.filter(function(s) { return s.type === 'text' }) },
+    subtitleEmojiSegments() { return this.subtitleSegments.filter(function(s) { return s.type === 'emoji' }) },
+    fileIconText() { var n = (this.mediaInfo && this.mediaInfo.fileName) || ''; var ext = n.split('.').pop(); ext = ext ? ext.toLowerCase() : ''; if (!ext || ext === 'unknown') return 'F'; return ext.charAt(0).toUpperCase() },
+    faceImageUrl() { var idx = (this.mediaInfo && this.mediaInfo.faceIndex) || 0; var faceMap = { 0: '/static/emoji/smile.png' }; return faceMap[idx] || faceMap[0] },
+  },
+  methods: {
+    formatSoundDuration(d) { if (!d) return "0''"; return Math.floor(d) + "''" },
+    formatFileSize(size) { if (!size) return '0 B'; var units = ['B','KB','MB','GB','TB']; var s = size; var u = 0; while (s >= 1024 && u < units.length - 1) { s /= 1024; u++ }; return (u === 0 ? s.toFixed(0) : s.toFixed(1)) + ' ' + units[u] },
+    splitByKeyword(text, keyword) {
+      if (!text) return []; if (!keyword) return [{ type: 'text', text: text, highlight: false }]
+      var segs = []; var lt = text.toLowerCase(); var lk = keyword.toLowerCase(); var last = 0; var idx = lt.indexOf(lk)
+      while (idx !== -1) { if (idx > last) segs.push({ type: 'text', text: text.slice(last, idx), highlight: false }); segs.push({ type: 'text', text: text.slice(idx, idx + keyword.length), highlight: true }); last = idx + keyword.length; idx = lt.indexOf(lk, last) }
+      if (last < text.length) segs.push({ type: 'text', text: text.slice(last), highlight: false }); return segs.length > 0 ? segs : [{ type: 'text', text: text, highlight: false }]
+    },
+    /**
+     * 在已解析 segments 上叠加关键词高亮（emoji 透传，text 按 keyword 拆分）
+     */
+    applyKeywordHighlight(segments, keyword) {
+      if (!keyword) {
+        return segments.map(function(seg) {
+          if (seg.type === 'emoji') return { type: 'emoji', src: seg.src || '' }
+          return { type: 'text', text: seg.content || '', highlight: false }
+        })
       }
-      return { type: 'text', text: seg.content || '', highlight: false }
-    })
-  }
-
-  const result: Segment[] = []
-  const lowerKeyword = keyword.toLowerCase()
-
-  for (const seg of segments) {
-    if (seg.type === 'emoji') {
-      result.push({ type: 'emoji', src: seg.src || '' })
-      continue
-    }
-    const text = seg.content || ''
-    if (!text) continue
-
-    const lowerText = text.toLowerCase()
-    let lastIndex = 0
-    let index = lowerText.indexOf(lowerKeyword)
-    while (index !== -1) {
-      if (index > lastIndex) {
-        result.push({ type: 'text', text: text.slice(lastIndex, index), highlight: false })
+      var result = []; var lk = keyword.toLowerCase()
+      for (var i = 0; i < segments.length; i++) {
+        var seg = segments[i]
+        if (seg.type === 'emoji') { result.push({ type: 'emoji', src: seg.src || '' }); continue }
+        var t = seg.content || ''
+        if (!t) continue
+        var lt = t.toLowerCase(); var last = 0; var idx = lt.indexOf(lk)
+        while (idx !== -1) {
+          if (idx > last) result.push({ type: 'text', text: t.slice(last, idx), highlight: false })
+          result.push({ type: 'text', text: t.slice(idx, idx + keyword.length), highlight: true })
+          last = idx + keyword.length; idx = lt.indexOf(lk, last)
+        }
+        if (last < t.length) result.push({ type: 'text', text: t.slice(last), highlight: false })
       }
-      result.push({ type: 'text', text: text.slice(index, index + keyword.length), highlight: true })
-      lastIndex = index + keyword.length
-      index = lowerText.indexOf(lowerKeyword, lastIndex)
-    }
-    if (lastIndex < text.length) {
-      result.push({ type: 'text', text: text.slice(lastIndex), highlight: false })
-    }
-  }
-
-  return result
+      return result
+    },
+    /**
+     * 1) 先按 [TUIEmoji_xxx] 解析为 segments（防止 emoji key 被截断）
+     * 2) 按"用户感知字符"截断（emoji 视为 1 字符；ZWJ 序列整体回溯）
+     * 3) 在截断后的 text segment 上叠加关键词高亮
+     */
+    buildSubtitleSegments(text, keyword) {
+      if (!text) return []
+      var parsed = parseTextToSegments(text)
+      var truncated = truncateSegments(parsed, 30)
+      return this.applyKeywordHighlight(truncated, keyword)
+    },
+  },
 }
-
-/**
- * 构建副标题分段：
- * 1) 先按 [TUIEmoji_xxx] 解析为 text/emoji segments（防止 emoji key 被截断）
- * 2) 按"用户感知字符"截断（emoji 视为 1 字符，文本按 code point 计；ZWJ 序列整体回溯）
- * 3) 在截断后的 text segment 上叠加关键词高亮
- */
-function buildSubtitleSegments(text: string, keyword: string): Segment[] {
-  if (!text) return []
-  const parsed = parseTextToSegments(text)
-  const truncated = truncateSegments(parsed, MAX_SUBTITLE_LENGTH)
-  return applyKeywordHighlight(truncated, keyword)
-}
-
-const titleSegments = computed(() => splitByKeyword(props.title, props.keyword))
-const titleSuffixSegments = computed(() => splitByKeyword(props.titleSuffix, props.keyword))
-const subtitleSegments = computed(() => buildSubtitleSegments(props.subtitle, props.keyword))
 </script>
 
 <style>

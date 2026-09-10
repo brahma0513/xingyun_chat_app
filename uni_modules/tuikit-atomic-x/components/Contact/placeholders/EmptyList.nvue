@@ -4,25 +4,15 @@
   </view>
 </template>
 
-<script setup lang="ts">
-withDefaults(defineProps<{
-  text?: string
-}>(), {
-  text: '暂无联系人'
-})
+<script>
+export default {
+  props: {
+    text: { type: String, default: '暂无联系人' },
+  },
+}
 </script>
 
 <style>
-.empty-list {
-  flex: 1;
-  justify-content: center;
-  align-items: center;
-  padding: 100rpx 60rpx;
-}
-
-.empty-list__text {
-  font-size: 28rpx;
-  color: #999999;
-  text-align: center;
-}
+.empty-list { flex: 1; justify-content: center; align-items: center; padding: 100rpx 60rpx; }
+.empty-list__text { font-size: 28rpx; color: #999999; text-align: center; }
 </style>

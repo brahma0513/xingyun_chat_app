@@ -1,24 +1,8 @@
 /**
- * 消息列表状态管理
+ * 消息列表状态管理 (Vue2 适配版)
  * @module MessageListState
- *
- * 对齐底层 atomicxcore.api.message.MessageListStore.kt（HybridAPI: MessageListAPI.kt）
- *
- * **本次升级关键调整：**
- * - `fetchMessageList` → `loadMessages`（参数 option 对齐 MessageLoadOption）
- * - `fetchMoreMessageList(direction)` → `loadOlderMessages` / `loadNewerMessages`（拆为两个 API）
- * - `forwardMessages(messages, option, conversationIDList[])` → `forwardMessages(messages, option, conversationID)`
- *   单个 ID；多会话需循环调用
- * - **删除** `downloadMessageResource`：迁到 MessageActionStore.downloadMedia
- * - **删除** `fetchMessageReactions`：迁到 MessageActionStore.loadReactionUsers
- * - listener 字段重命名：
- *   - `hasMoreOlderMessage` → `hasOlderMessages`
- *   - `hasMoreNewerMessage` → `hasNewerMessages`
- * - **新增** `pinnedMessageList` 字段订阅
- * - **新增** `messageEvent` 流式订阅（OnReceiveNewMessage 等）
- * - MessageInfo 字段重命名：`isSelf` → `isSentBySelf`，C2C Callkit 翻转逻辑同步调整
  */
-import { ref, type Ref } from 'vue'
+import { makeReactive } from "../utils/reactiveCompat";
 import {
   MessageLoadDirection,
   MessageListType,
@@ -28,19 +12,18 @@ import type {
   MessageInfo,
   MessageLoadOption,
   ForwardMessageOption,
-  MessageEvent,
   CustomMessagePayload,
+  MessageEvent,
 } from '../types/message'
 
-import type { HybridCallOptions } from '../utssdk/interface.uts'
-import { callAPI, addListener, removeListener } from "@/uni_modules/tuikit-atomic-x";
+// @ts-ignore
+import { callAPI, addListener, removeListener } from "../utils/tuikitBridge";
 import { safeJsonParse } from '../utils/utsUtils';
 import { useLoginState } from './LoginState';
 import { useContactState } from './ContactState';
 
-/**
- * 获取全局 InstanceMap
- */
+declare const getApp: any;
+
 function getGlobalInstanceMap(): Map<string, MessageListState> {
   try {
     const app = getApp();
@@ -61,92 +44,37 @@ const InstanceMap = getGlobalInstanceMap();
 const { getLoginUserInfo } = useLoginState();
 const { getContactInfo } = useContactState('MessageListState');
 
-/**
- * 消息列表状态管理类
- */
 class MessageListState {
   public readonly instanceId: string;
   private readonly conversationID: string;
   private readonly initialLoadOption?: MessageLoadOption;
 
   /** 消息列表 */
-  public readonly messageList: Ref<MessageInfo[]>;
-  /** 是否有更早的消息（旧字段 hasMoreOlderMessage） */
-  public readonly hasOlderMessages: Ref<boolean>;
-  /** 是否有更新的消息（旧字段 hasMoreNewerMessage） */
-  public readonly hasNewerMessages: Ref<boolean>;
-  /** 置顶消息列表（**新增**） */
-  public readonly pinnedMessageList: Ref<MessageInfo[]>;
+  public readonly messageList: { value: MessageInfo[] };
 
-  /** C2C 会话对方用户信息（用于 Callkit 消息翻转） */
+  /** 是否有更早的消息（新版字段） */
+  public readonly hasOlderMessages: { value: boolean };
+
+  /** 是否有更新的消息（新版字段） */
+  public readonly hasNewerMessages: { value: boolean };
+
+  /** Pinned 消息列表（新增） */
+  public readonly pinnedMessageList: { value: MessageInfo[] };
+
   private peerUserInfo: { userID: string; avatarURL?: string; nickname?: string } | null = null;
-
-  /** messageEvent 订阅者列表 */
   private messageEventHandlers: Set<(event: MessageEvent) => void> = new Set();
 
   private constructor(conversationID: string, initialLoadOption?: MessageLoadOption) {
     this.instanceId = MessageListState.generateInstanceId(conversationID);
     this.conversationID = conversationID;
     this.initialLoadOption = initialLoadOption;
-    this.messageList = ref<MessageInfo[]>([]);
-    this.hasOlderMessages = ref<boolean>(true);
-    this.hasNewerMessages = ref<boolean>(false);
-    this.pinnedMessageList = ref<MessageInfo[]>([]);
+    this.messageList = makeReactive({ value: [] });
+    this.hasOlderMessages = makeReactive({ value: true });
+    this.hasNewerMessages = makeReactive({ value: false });
+    this.pinnedMessageList = makeReactive({ value: [] });
 
     this.createStore();
     this.fetchPeerUserInfo();
-  }
-
-  /**
-   * 预先获取 C2C 会话对方用户信息
-   */
-  private async fetchPeerUserInfo(): Promise<void> {
-    if (!this.conversationID.startsWith('c2c_')) {
-      return;
-    }
-
-    const peerUserID = this.conversationID.replace('c2c_', '');
-
-    try {
-      const userInfoList = await getContactInfo([peerUserID]);
-      if (userInfoList && userInfoList.length > 0) {
-        const peerInfo = userInfoList[0];
-        this.peerUserInfo = {
-          userID: peerUserID,
-          avatarURL: peerInfo.avatarURL,
-          nickname: peerInfo.nickname,
-        };
-      }
-    } catch (e) {
-      console.warn(`[${this.instanceId}][fetchPeerUserInfo] Failed:`, e);
-      this.peerUserInfo = { userID: peerUserID };
-    }
-  }
-
-  private createStore() {
-    const options: HybridCallOptions = {
-      api: "createStore",
-      params: {
-        createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
-    };
-
-    callAPI(JSON.stringify(options), (response: string) => {
-      try {
-        const result = safeJsonParse<any>(response, {});
-        if (result.code === 0) {
-          this.bindEvent();
-          if (this.conversationID) {
-            this.loadMessages(this.initialLoadOption || { pageCount: 20 });
-          }
-        } else {
-          console.error(`[${this.instanceId}][createStore] Failed:`, result.message);
-        }
-      } catch (error) {
-        console.error(`[${this.instanceId}][createStore] Parse error:`, error);
-      }
-    });
   }
 
   private static generateInstanceId(conversationID: string): string {
@@ -172,19 +100,56 @@ class MessageListState {
     return InstanceMap.get(instanceId)!;
   }
 
-  /**
-   * 绑定事件监听
-   */
-  private bindEvent(): void {
-    // messageList
-    addListener({
-      type: "",
-      store: "MessageList",
-      name: "messageList",
+  private async fetchPeerUserInfo(): Promise<void> {
+    if (!this.conversationID.startsWith('c2c_')) return;
+    const peerUserID = this.conversationID.replace('c2c_', '');
+    try {
+      const list = await getContactInfo([peerUserID]);
+      if (list && list.length > 0) {
+        const peer = list[0];
+        this.peerUserInfo = {
+          userID: peerUserID,
+          avatarURL: peer.avatarURL,
+          nickname: peer.nickname,
+        };
+      }
+    } catch (e) {
+      console.warn(`[${this.instanceId}][fetchPeerUserInfo] Failed:`, e);
+      this.peerUserInfo = { userID: peerUserID };
+    }
+  }
+
+  private createStore() {
+    callAPI(JSON.stringify({
+      api: "createStore",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
+        conversationID: this.conversationID
+      }
+    }), (response: string) => {
+      try {
+        const result = safeJsonParse<any>(response, {});
+        if (result.code === 0) {
+          this.bindEvent();
+          if (this.conversationID) {
+            this.loadMessages(this.initialLoadOption || { pageCount: 20 });
+          }
+        } else {
+          console.error(`[${this.instanceId}][createStore] Failed:`, result.message);
+        }
+      } catch (error) {
+        console.error(`[${this.instanceId}][createStore] Parse error:`, error);
+      }
+    });
+  }
+
+  private bindEvent(): void {
+    addListener({
+      type: "", store: "MessageList", name: "messageList",
+      params: {
+        createStoreParams: this.instanceId,
+        conversationID: this.conversationID
+      }
     }, (data: string) => {
       try {
         const result = safeJsonParse(data, {}) as any;
@@ -195,83 +160,67 @@ class MessageListState {
       }
     });
 
-    // hasOlderMessages（旧名 hasMoreOlderMessage）
     addListener({
-      type: "",
-      store: "MessageList",
-      name: "hasOlderMessages",
+      type: "", store: "MessageList", name: "hasOlderMessages",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
+        conversationID: this.conversationID
+      }
     }, (data: string) => {
       try {
         const result = safeJsonParse(data, {}) as any;
         if (result.hasOlderMessages !== undefined) {
-          this.hasOlderMessages.value = result.hasOlderMessages;
+          this.hasOlderMessages.value = Boolean(result.hasOlderMessages);
         }
       } catch (error) {
         console.error(`[${this.instanceId}][hasOlderMessages listener] Error:`, error);
       }
     });
 
-    // hasNewerMessages（旧名 hasMoreNewerMessage）
     addListener({
-      type: "",
-      store: "MessageList",
-      name: "hasNewerMessages",
+      type: "", store: "MessageList", name: "hasNewerMessages",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
+        conversationID: this.conversationID
+      }
     }, (data: string) => {
       try {
         const result = safeJsonParse(data, {}) as any;
         if (result.hasNewerMessages !== undefined) {
-          this.hasNewerMessages.value = result.hasNewerMessages;
+          this.hasNewerMessages.value = Boolean(result.hasNewerMessages);
         }
       } catch (error) {
         console.error(`[${this.instanceId}][hasNewerMessages listener] Error:`, error);
       }
     });
 
-    // pinnedMessageList（新增）
     addListener({
-      type: "",
-      store: "MessageList",
-      name: "pinnedMessageList",
+      type: "", store: "MessageList", name: "pinnedMessageList",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
+        conversationID: this.conversationID
+      }
     }, (data: string) => {
       try {
         const result = safeJsonParse(data, {}) as any;
         const list = safeJsonParse<MessageInfo[]>(result.pinnedMessageList, []);
-        this.pinnedMessageList.value = list;
+        if (Array.isArray(list)) this.pinnedMessageList.value = list;
       } catch (error) {
         console.error(`[${this.instanceId}][pinnedMessageList listener] Error:`, error);
       }
     });
 
-    // messageEvent（流式事件）
     addListener({
-      type: "",
-      store: "MessageList",
-      name: "messageEvent",
+      type: "", store: "MessageList", name: "messageEvent",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
+        conversationID: this.conversationID
+      }
     }, (data: string) => {
       try {
-        const result = safeJsonParse<any>(data, {});
-        const event: MessageEvent = {
-          eventType: result.eventType,
-          data: typeof result.data === 'string' ? safeJsonParse(result.data, {}) : (result.data || {}),
-        } as MessageEvent;
-        this.messageEventHandlers.forEach((h) => {
-          try { h(event); } catch (e) { console.error('[messageEvent handler] Error:', e); }
+        const result = safeJsonParse(data, {}) as MessageEvent;
+        this.messageEventHandlers.forEach(h => {
+          try { h(result); } catch (e) { console.error('[MessageList][messageEvent handler] Error:', e); }
         });
       } catch (error) {
         console.error(`[${this.instanceId}][messageEvent listener] Error:`, error);
@@ -280,41 +229,33 @@ class MessageListState {
   }
 
   /**
-   * C2C Callkit 消息翻转
-   *
-   * 注：MessageInfo 字段已升级为 `from / to / isSentBySelf`（旧 `sender / receiver / isSelf`）
+   * 处理 C2C Callkit 消息翻转（使用新版字段 isSentBySelf / from / to）
    */
   private handleC2CCallSignaling(messageList: MessageInfo[]): MessageInfo[] {
-    if (!this.conversationID.startsWith('c2c_')) {
-      return messageList;
-    }
+    if (!this.conversationID.startsWith('c2c_')) return messageList;
 
     const loginUser = getLoginUserInfo();
-    const myUserID = loginUser?.userID;
-
-    if (!myUserID) {
-      return messageList;
-    }
+    const myUserID = loginUser ? loginUser.userID : undefined;
+    if (!myUserID) return messageList;
 
     const myUserInfo = {
       userID: myUserID,
-      avatarURL: loginUser?.avatarURL,
-      nickname: loginUser?.nickname,
+      avatarURL: loginUser ? loginUser.avatarURL : undefined,
+      nickname: loginUser ? loginUser.nickname : undefined,
     };
 
     const peerUserID = this.conversationID.replace('c2c_', '');
     const peerUserInfo = this.peerUserInfo || { userID: peerUserID };
 
     const result: MessageInfo[] = [];
-
     for (const message of messageList) {
       if (message.messageType !== MessageType.CUSTOM) {
         result.push(message);
         continue;
       }
 
-      const customPayload = message.messagePayload as CustomMessagePayload | undefined;
-      const customData = customPayload?.customData;
+      const payload = message.messagePayload as CustomMessagePayload | undefined;
+      const customData = payload && payload.customData ? payload.customData : undefined;
       if (!customData) {
         result.push(message);
         continue;
@@ -322,34 +263,34 @@ class MessageListState {
 
       try {
         const callSignaling = safeJsonParse<any>(customData.toString(), null);
-
-        if (callSignaling?.businessID !== 1) {
+        if (callSignaling && callSignaling.businessID !== 1) {
           result.push(message);
           continue;
         }
 
         const innerData = safeJsonParse<any>(callSignaling.data, null);
-
-        const rawMessage = message.rawMessage;
-        const isExcludedFromUnreadCount = rawMessage?._isExcludedFromUnreadCount ?? rawMessage?.isExcludedFromUnreadCount;
-        const isExcludedFromLastMessage = rawMessage?._isExcludedFromLastMessage ?? rawMessage?.isExcludedFromLastMessage;
+        const rawMessage = (message as any).rawMessage;
+        const isExcludedFromUnreadCount = rawMessage
+          ? (rawMessage._isExcludedFromUnreadCount != null ? rawMessage._isExcludedFromUnreadCount : rawMessage.isExcludedFromUnreadCount)
+          : undefined;
+        const isExcludedFromLastMessage = rawMessage
+          ? (rawMessage._isExcludedFromLastMessage != null ? rawMessage._isExcludedFromLastMessage : rawMessage.isExcludedFromLastMessage)
+          : undefined;
         const isDisplayInChat = !(isExcludedFromUnreadCount && isExcludedFromLastMessage);
-
         if (!isDisplayInChat) {
           result.push(message);
           continue;
         }
 
-        if (innerData?.data?.consumed === true) {
+        if (innerData && innerData.data && innerData.data.consumed === true) {
           result.push(message);
           continue;
         }
 
-        let inviter: string | undefined = innerData?.data?.inviter?.toString();
-        if (innerData?.line_busy === 'line_busy' || innerData?.data?.message === 'lineBusy') {
-          inviter = callSignaling.inviter?.toString();
+        let inviter: string | undefined = (innerData && innerData.data && innerData.data.inviter) ? innerData.data.inviter.toString() : undefined;
+        if ((innerData && innerData.line_busy === 'line_busy') || (innerData && innerData.data && innerData.data.message === 'lineBusy')) {
+          inviter = (callSignaling && callSignaling.inviter) ? callSignaling.inviter.toString() : undefined;
         }
-
         if (!inviter) {
           result.push(message);
           continue;
@@ -357,9 +298,7 @@ class MessageListState {
 
         const copiedMessage: MessageInfo = JSON.parse(JSON.stringify(message));
 
-        // 消息翻转逻辑（基于新字段名 isSentBySelf / from / to）
         if (inviter !== myUserID && copiedMessage.isSentBySelf) {
-          // 当前用户不是发起者，消息应该显示为对方发送（来电）
           copiedMessage.isSentBySelf = false;
           if (copiedMessage.to) {
             copiedMessage.from.userID = peerUserInfo.userID;
@@ -368,7 +307,6 @@ class MessageListState {
             copiedMessage.to = myUserInfo.userID;
           }
         } else if (inviter === myUserID && !copiedMessage.isSentBySelf) {
-          // 当前用户是发起者，消息应该显示为自己发送（呼出）
           copiedMessage.isSentBySelf = true;
           if (copiedMessage.to) {
             copiedMessage.from.userID = myUserInfo.userID;
@@ -377,210 +315,123 @@ class MessageListState {
             copiedMessage.to = peerUserInfo.userID;
           }
         }
-
         result.push(copiedMessage);
       } catch (e) {
         result.push(message);
       }
     }
-
     return result;
   }
 
-  // ============================================================================
-  // Actions
-  // ============================================================================
+  // ==================== 新版 API ====================
 
   /**
-   * 拉取消息列表（旧名 fetchMessageList）
-   *
-   * @param option MessageLoadOption（含 cursor / direction / pageCount / messageTypeList）
+   * 加载消息（替代旧 fetchMessageList）
    */
   loadMessages = async (option: MessageLoadOption = {}): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const finalOption: any = {
-        messageListType: option.messageListType ?? MessageListType.HISTORY,
-        direction: option.direction ?? MessageLoadDirection.OLDER,
-        pageCount: option.pageCount ?? 20,
+      const opt: any = {
+        direction: option.direction !== undefined ? option.direction : MessageLoadDirection.OLDER,
+        pageCount: option.pageCount !== undefined ? option.pageCount : 20,
       };
-      if (option.cursor) finalOption.cursor = option.cursor;
-      if (option.messageTypeList) finalOption.messageTypeList = option.messageTypeList;
-
-      const options: HybridCallOptions = {
+      if (option.cursor !== undefined) opt.cursor = option.cursor;
+      if (option.messageTypeList !== undefined) opt.messageTypeList = option.messageTypeList;
+      if (option.messageListType !== undefined) opt.messageListType = option.messageListType;
+      callAPI(JSON.stringify({
         api: 'loadMessages',
         params: {
           createStoreParams: this.instanceId,
-          option: JSON.stringify(finalOption),
+          option: JSON.stringify(opt)
         },
-      };
-      callAPI(JSON.stringify(options), (data: string) => {
-        try {
-          const result = safeJsonParse(data, {}) as any;
-          if (result.code === 0) {
-            resolve(result);
-          } else {
-            reject(new Error(result.message || 'loadMessages failed'));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 加载更早消息（拆分自 fetchMoreMessageList(OLDER)）
-   */
-  loadOlderMessages = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: 'loadOlderMessages',
-        params: {
-          createStoreParams: this.instanceId,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (data: string) => {
-        try {
-          const result = safeJsonParse(data, {}) as any;
-          if (result.code === 0) {
-            resolve(result);
-          } else {
-            reject(new Error(result.message || 'loadOlderMessages failed'));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 加载更新消息（拆分自 fetchMoreMessageList(NEWER)）
-   */
-  loadNewerMessages = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: 'loadNewerMessages',
-        params: {
-          createStoreParams: this.instanceId,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (data: string) => {
-        try {
-          const result = safeJsonParse(data, {}) as any;
-          if (result.code === 0) {
-            resolve(result);
-          } else {
-            reject(new Error(result.message || 'loadNewerMessages failed'));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 发送消息已读回执
-   */
-  sendMessageReadReceipts = async (messageListParam: MessageInfo[]): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: 'sendMessageReadReceipts',
-        params: {
-          createStoreParams: this.instanceId,
-          messageList: messageListParam,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (data: string) => {
+      }), (data: string) => {
         try {
           const result = safeJsonParse(data, {}) as any;
           if (result.code === 0) {
             resolve();
           } else {
-            reject(new Error(result.message || 'sendMessageReadReceipts failed'));
+            reject(new Error(result.message || 'loadMessages failed'));
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
   /**
-   * 删除消息（批量；底层 MessageListStore.deleteMessages）
+   * 加载更早的消息（替代旧 fetchMoreMessageList(OLDER)）
    */
-  deleteMessages = async (messageListParam: MessageInfo[]): Promise<void> => {
+  loadOlderMessages = (): Promise<void> => this.callSimpleApi('loadOlderMessages');
+
+  /**
+   * 加载更新的消息（替代旧 fetchMoreMessageList(NEWER)）
+   */
+  loadNewerMessages = (): Promise<void> => this.callSimpleApi('loadNewerMessages');
+
+  /** 发送消息已读回执 */
+  sendMessageReadReceipts = async (messageList: MessageInfo[]): Promise<void> =>
+    this.callApiWithParams('sendMessageReadReceipts', { messageList: JSON.stringify(messageList) });
+
+  /** 删除消息 */
+  deleteMessages = async (messageList: MessageInfo[]): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
+      callAPI(JSON.stringify({
         api: 'deleteMessages',
         params: {
           createStoreParams: this.instanceId,
-          messageList: messageListParam,
+          messageList: JSON.stringify(messageList),
         },
-      };
-
-      callAPI(JSON.stringify(options), (data: string) => {
+      }), (data: string) => {
         try {
           const result = safeJsonParse(data, {}) as any;
           if (result.code === 0) {
-            const messageIDsToDelete = messageListParam.map((msg) => msg.msgID);
+            const idsToDelete = messageList.map(m => m.msgID);
             this.messageList.value = this.messageList.value.filter(
-              (msg: MessageInfo) => !messageIDsToDelete.includes(msg.msgID)
+              (m: MessageInfo) => idsToDelete.indexOf(m.msgID) === -1
             );
             resolve();
           } else {
             reject(new Error(result.message || 'deleteMessages failed'));
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
   /**
-   * 转发消息
-   *
-   * **本次升级关键变化**：参数 `conversationIDList: string[]` → `conversationID: string`（**单个**）；
-   * 多会话需循环调用
-   *
-   * @param messageListParam 待转发消息列表
-   * @param forwardOption 转发选项
-   * @param conversationIDOrList 目标会话 ID（兼容传数组：自动循环调用）
+   * 转发消息（新版：单 conversationID；兼容数组循环）
    */
   forwardMessages = async (
-    messageListParam: MessageInfo[],
+    messageList: MessageInfo[],
     forwardOption: ForwardMessageOption,
-    conversationIDOrList: string | string[]
+    conversationID: string | string[]
   ): Promise<void> => {
-    // 兼容数组：循环调用
-    if (Array.isArray(conversationIDOrList)) {
+    if (Array.isArray(conversationID)) {
       const results = await Promise.allSettled(
-        conversationIDOrList.map((cid) => this.forwardMessages(messageListParam, forwardOption, cid))
+        conversationID.map(id => this.forwardToOne(messageList, forwardOption, id))
       );
-      const failed = results.filter((r) => r.status === 'rejected');
-      if (failed.length > 0) {
-        console.warn(`[forwardMessages] ${failed.length}/${results.length} failed`);
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn(`[${this.instanceId}][forwardMessages] ${failures.length}/${results.length} failed`);
       }
       return;
     }
+    return this.forwardToOne(messageList, forwardOption, conversationID);
+  }
 
+  private forwardToOne(
+    messageList: MessageInfo[],
+    forwardOption: ForwardMessageOption,
+    conversationID: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
+      callAPI(JSON.stringify({
         api: 'forwardMessages',
         params: {
           createStoreParams: this.instanceId,
-          messageList: messageListParam,
-          option: JSON.stringify(forwardOption),
-          conversationID: conversationIDOrList,
+          messageList: JSON.stringify(messageList),
+          forwardOption: JSON.stringify(forwardOption),
+          conversationID,
         },
-      };
-
-      callAPI(JSON.stringify(options), (data: string) => {
+      }), (data: string) => {
         try {
           const result = safeJsonParse(data, {}) as any;
           if (result.code === 0) {
@@ -588,43 +439,65 @@ class MessageListState {
           } else {
             reject(new Error(result.message || 'forwardMessages failed'));
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
-  /**
-   * 订阅消息事件流（OnReceiveNewMessage 等）
-   *
-   * @returns 取消订阅函数
-   */
+  /** 注册流式消息事件订阅，返回 unsubscribe 函数 */
   messageListOnEvent = (handler: (event: MessageEvent) => void): (() => void) => {
     this.messageEventHandlers.add(handler);
     return () => {
       this.messageEventHandlers.delete(handler);
     };
-  };
+  }
 
-  // ============================================================================
-  // 销毁
-  // ============================================================================
+  // ==================== 内部工具 ====================
 
-  private unbindEvent(): void {
-    const dataNames = ["messageList", "hasOlderMessages", "hasNewerMessages", "pinnedMessageList", "messageEvent"];
-
-    dataNames.forEach((dataName) => {
-      removeListener({
-        type: "",
-        store: "MessageList",
-        name: dataName,
-        params: {
-          createStoreParams: this.instanceId,
-        },
+  private callSimpleApi(api: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      callAPI(JSON.stringify({
+        api,
+        params: { createStoreParams: this.instanceId }
+      }), (response: string) => {
+        try {
+          const result = safeJsonParse<any>(response, {});
+          if (result.code === 0) {
+            resolve();
+          } else {
+            console.error(`[${this.instanceId}][${api}] Failed:`, result.message);
+            reject(new Error(result.message || `${api} failed`));
+          }
+        } catch (error) { reject(error); }
       });
     });
-    this.messageEventHandlers.clear();
+  }
+
+  private callApiWithParams(api: string, extraParams: Record<string, any>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const params: Record<string, any> = { createStoreParams: this.instanceId };
+      for (const k in extraParams) { params[k] = extraParams[k]; }
+      callAPI(JSON.stringify({ api, params }), (response: string) => {
+        try {
+          const result = safeJsonParse<any>(response, {});
+          if (result.code === 0) {
+            resolve();
+          } else {
+            console.error(`[${this.instanceId}][${api}] Failed:`, result.message);
+            reject(new Error(result.message || `${api} failed`));
+          }
+        } catch (error) { reject(error); }
+      });
+    });
+  }
+
+  private unbindEvent(): void {
+    ["messageList", "hasOlderMessages", "hasNewerMessages", "pinnedMessageList", "messageEvent"].forEach(name => {
+      removeListener({
+        type: "", store: "MessageList", name,
+        params: { createStoreParams: this.instanceId }
+      });
+    });
   }
 
   private resetData(): void {
@@ -640,21 +513,22 @@ class MessageListState {
     this.unbindEvent();
     this.resetData();
     InstanceMap.delete(this.instanceId);
-    const options: HybridCallOptions = {
+    callAPI(JSON.stringify({
       api: "destroyStore",
       params: {
         createStoreParams: this.instanceId,
-        conversationID: this.conversationID,
-      },
-    };
-
-    callAPI(JSON.stringify(options), () => {});
-  };
+        conversationID: this.conversationID
+      }
+    }), (response: string) => {
+      try {
+        safeJsonParse(response, {});
+      } catch (error) {
+        console.error(`[${this.instanceId}][destroyStore] Parse error:`, error);
+      }
+    });
+  }
 }
 
-/**
- * useMessageListState 参数选项
- */
 export interface UseMessageListStateOptions {
   conversationID?: string;
   initialLoadOption?: MessageLoadOption;
@@ -662,7 +536,6 @@ export interface UseMessageListStateOptions {
 
 export function useMessageListState(options: UseMessageListStateOptions = {}) {
   const { conversationID = "", initialLoadOption } = options;
-
   return MessageListState.getInstance(conversationID, initialLoadOption);
 }
 
@@ -670,4 +543,4 @@ export {
   MessageListState,
   MessageLoadDirection,
   MessageListType,
-};
+}

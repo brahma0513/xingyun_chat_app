@@ -1,6 +1,6 @@
 <template>
-  <view 
-    class="conv-preview" 
+  <view
+    class="conv-preview"
     :class="{ 'conv-preview--pinned': conversation.isPinned }"
   >
     <component
@@ -14,7 +14,7 @@
     <view class="conv-preview__info">
       <view class="conv-preview__header">
         <text class="conv-preview__name" :numberOfLines="1">{{ conversation.title }}</text>
-        <text class="conv-preview__time">{{ formatTime(conversation.lastMessage?.timestamp) }}</text>
+        <text class="conv-preview__time">{{ formatTime(conversation.lastMessage && conversation.lastMessage.timestamp) }}</text>
       </view>
 
       <view class="conv-preview__footer">
@@ -23,26 +23,28 @@
           <text v-if="hasAtMe" class="conv-preview__label conv-preview__label--mention">[有人@我]</text>
           <text v-if="conversation.draft" class="conv-preview__label conv-preview__label--draft">[草稿]</text>
           <text v-else-if="isMuted && unreadCount > 0" class="conv-preview__label conv-preview__label--count">[{{unreadCount}}条]</text>
-          
+
           <view class="conv-preview__last-msg-container">
-            <template v-for="(segment, index) in messageSegments" :key="index">
-              <text 
-                v-if="segment.type === 'text'" 
+            <template v-for="(segment, index) in messageSegments">
+              <text
+                v-if="segment.type === 'text'"
+                :key="'t' + index"
                 class="conv-preview__last-msg-text"
               >{{ segment.content }}</text>
-              <image 
-                v-else-if="segment.type === 'emoji'" 
+              <image
+                v-else-if="segment.type === 'emoji'"
+                :key="'e' + index"
                 class="conv-preview__emoji"
                 :src="segment.src"
               />
             </template>
           </view>
         </view>
-        
+
         <view class="conv-preview__status">
           <view v-if="isMuted" class="conv-preview__icon">
             <image
-              src="../../static/icon/mute.png"
+              src="/uni_modules/tuikit-atomic-x/static/icon/mute.png"
               class="conv-preview__icon-img"
               mode="aspectFill"
             />
@@ -54,133 +56,134 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import { computed } from 'vue'
+<script>
 import AvatarComponent from '../Avatar'
-import { ConversationType, ConversationReceiveOption, GroupAtType, type ConversationInfo } from '../../types/conversation'
-import { MessageType, MessageStatus, type MessageInfo } from '../../types/message'
-import type { ConversationPreviewProps } from '../../types/conversationList'
-import { 
-  getMessageAbstract, 
-  parseTextToSegments, 
-  truncateSegments, 
-  getSenderName,
-  type MessageSegment 
+import { ConversationType, ConversationReceiveOption, GroupAtType } from '../../types/conversation'
+import { MessageType, MessageStatus } from '../../types/message'
+import {
+  getMessageAbstract,
+  parseTextToSegments,
+  truncateSegments,
+  getSenderName
 } from './utils'
 
-const props = withDefaults(defineProps<ConversationPreviewProps>(), {
-  Avatar: () => AvatarComponent
-})
+export default {
+  name: 'ConversationPreview',
+  props: {
+    conversation: {
+      type: Object,
+      required: true
+    },
+    Avatar: {
+      type: [Object, Function],
+      default() { return AvatarComponent }
+    }
+  },
+  computed: {
+    displayName() {
+      return this.conversation.title || '未知会话'
+    },
+    defaultAvatarType() {
+      if (this.conversation.type === ConversationType.GROUP) {
+        return this.conversation.groupType
+      }
+      return 'user'
+    },
+    isMuted() {
+      return this.conversation.receiveOption === ConversationReceiveOption.NOT_RECEIVE ||
+             this.conversation.receiveOption === ConversationReceiveOption.NOT_NOTIFY
+    },
+    atFlags() {
+      const result = { hasAtAll: false, hasAtMe: false }
+      if (this.conversation.type !== ConversationType.GROUP) return result
+      if (!this.conversation.unreadCount || this.conversation.unreadCount <= 0) return result
+      const list = this.conversation.groupAtInfoList
+      if (!list || list.length === 0) return result
+      for (let i = 0; i < list.length; i++) {
+        const info = list[i]
+        if (info.atType === GroupAtType.AT_ALL) {
+          result.hasAtAll = true
+        } else if (info.atType === GroupAtType.AT_ME) {
+          result.hasAtMe = true
+        } else if (info.atType === GroupAtType.AT_ALL_AT_ME) {
+          result.hasAtAll = true
+          result.hasAtMe = true
+        }
+      }
+      return result
+    },
+    hasAtAll() {
+      return this.atFlags.hasAtAll
+    },
+    hasAtMe() {
+      return this.atFlags.hasAtMe
+    },
+    messageSegments() {
+      if (this.conversation.draft) {
+        return truncateSegments(parseTextToSegments(this.conversation.draft))
+      }
+      const lastMessage = this.conversation.lastMessage
+      if (!lastMessage) {
+        return [{ type: 'text', content: '暂无消息' }]
+      }
+      if (lastMessage.status === MessageStatus.SEND_SUCCESS && lastMessage.messageType === MessageType.TEXT && lastMessage.messagePayload && lastMessage.messagePayload.text) {
+        let text = lastMessage.messagePayload.text.replace(/[\r\n]+/g, ' ')
+        const senderName = getSenderName(lastMessage)
+        if (senderName) {
+          text = senderName + ': ' + text
+        }
+        return truncateSegments(parseTextToSegments(text))
+      }
+      const abstract = getMessageAbstract(lastMessage)
+      return [{ type: 'text', content: abstract }]
+    },
+    unreadCount() {
+      return this.conversation.unreadCount
+    }
+  },
+  methods: {
+    formatTime(timestamp) {
+      if (!timestamp) return ''
 
-const displayName = computed(() => {
-  return props.conversation.title || '未知会话'
-})
+      const messageTime = new Date(timestamp * 1000)
+      const now = new Date()
 
-const defaultAvatarType = computed(() => {
-  if (props.conversation.type === ConversationType.GROUP) {
-    return props.conversation.groupType
-  }
-  return 'user'
-})
+      const messageYear = messageTime.getFullYear()
+      const messageMonth = messageTime.getMonth() + 1
+      const messageDay = messageTime.getDate()
+      const messageHours = messageTime.getHours().toString().padStart(2, '0')
+      const messageMinutes = messageTime.getMinutes().toString().padStart(2, '0')
+      const messageDayOfWeek = messageTime.getDay()
 
-const isMuted = computed(() => {
-  return props.conversation.receiveOption === ConversationReceiveOption.NOT_RECEIVE ||
-         props.conversation.receiveOption === ConversationReceiveOption.NOT_NOTIFY
-})
+      const formattedMonth = messageMonth.toString().padStart(2, '0')
+      const formattedDay = messageDay.toString().padStart(2, '0')
 
-const atFlags = computed(() => {
-  const result = { hasAtAll: false, hasAtMe: false }
-  if (props.conversation.type !== ConversationType.GROUP) return result
-  if (!props.conversation.unreadCount || props.conversation.unreadCount <= 0) return result
-  const list = props.conversation.groupAtInfoList
-  if (!list || list.length === 0) return result
-  for (const info of list) {
-    if (info.atType === GroupAtType.AT_ALL) {
-      result.hasAtAll = true
-    } else if (info.atType === GroupAtType.AT_ME) {
-      result.hasAtMe = true
-    } else if (info.atType === GroupAtType.AT_ALL_AT_ME) {
-      result.hasAtAll = true
-      result.hasAtMe = true
+      const currentYear = now.getFullYear()
+
+      const timeDiff = now.getTime() - messageTime.getTime()
+      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+
+      if (dayDiff === 0) {
+        return messageHours + ':' + messageMinutes
+      }
+
+      if (dayDiff === 1) {
+        return '昨天 ' + messageHours + ':' + messageMinutes
+      }
+
+      if (dayDiff > 1 && dayDiff < 7) {
+        const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+        const weekDay = weekDays[messageDayOfWeek]
+        return weekDay + ' ' + messageHours + ':' + messageMinutes
+      }
+
+      if (messageYear === currentYear) {
+        return formattedMonth + '/' + formattedDay
+      }
+
+      return messageYear + '/' + formattedMonth + '/' + formattedDay
     }
   }
-  return result
-})
-
-const hasAtAll = computed(() => atFlags.value.hasAtAll)
-const hasAtMe = computed(() => atFlags.value.hasAtMe)
-
-const messageSegments = computed<MessageSegment[]>(() => {
-  if (props.conversation.draft) {
-    return truncateSegments(parseTextToSegments(props.conversation.draft))
-  }
-  
-  const lastMessage = props.conversation.lastMessage
-  
-  if (!lastMessage) {
-    return [{ type: 'text', content: '暂无消息' }]
-  }
-
-  if (lastMessage.status === MessageStatus.SEND_SUCCESS && lastMessage.messageType === MessageType.TEXT && lastMessage.messagePayload?.text) {
-    // 将换行符替换为空格，保证一行显示
-    let text = lastMessage.messagePayload.text.replace(/[\r\n]+/g, ' ')
-    
-    const senderName = getSenderName(lastMessage)
-    if (senderName) {
-      text = `${senderName}: ${text}`
-    }
-    
-    return truncateSegments(parseTextToSegments(text))
-  }
-  
-  const abstract = getMessageAbstract(lastMessage)
-  return [{ type: 'text', content: abstract }]
-})
-
-const unreadCount = computed(() => {
-  return props.conversation.unreadCount
-})
-
-const formatTime = (timestamp: number): string => {
-  if (!timestamp) return ''
-  
-  const messageTime = new Date(timestamp * 1000)
-  const now = new Date()
-  
-  const messageYear = messageTime.getFullYear()
-  const messageMonth = messageTime.getMonth() + 1
-  const messageDay = messageTime.getDate()
-  const messageHours = messageTime.getHours().toString().padStart(2, '0')
-  const messageMinutes = messageTime.getMinutes().toString().padStart(2, '0')
-  const messageDayOfWeek = messageTime.getDay()
-  
-  const formattedMonth = messageMonth.toString().padStart(2, '0')
-  const formattedDay = messageDay.toString().padStart(2, '0')
-  
-  const currentYear = now.getFullYear()
-  
-  const timeDiff = now.getTime() - messageTime.getTime()
-  const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
-  
-  if (dayDiff === 0) {
-    return `${messageHours}:${messageMinutes}`
-  }
-  
-  if (dayDiff === 1) {
-    return `昨天 ${messageHours}:${messageMinutes}`
-  }
-  
-  if (dayDiff > 1 && dayDiff < 7) {
-    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    const weekDay = weekDays[messageDayOfWeek]
-    return `${weekDay} ${messageHours}:${messageMinutes}`
-  }
-  
-  if (messageYear === currentYear) {
-    return `${formattedMonth}/${formattedDay}`
-  }
-  
-  return `${messageYear}/${formattedMonth}/${formattedDay}`
 }
 </script>
 
@@ -276,7 +279,7 @@ const formatTime = (timestamp: number): string => {
   color: #999999;
 }
 
-/* Element: last message container - 混合布局容器 */
+/* Element: last message container */
 .conv-preview__last-msg-container {
   flex: 1;
   flex-direction: row;

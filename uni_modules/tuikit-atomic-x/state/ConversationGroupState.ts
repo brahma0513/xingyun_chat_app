@@ -1,34 +1,21 @@
 /**
- * 会话分组状态管理（**新增**）
+ * 会话分组状态管理 (Vue2 适配版)
  * @module ConversationGroupState
  *
- * 对齐底层 atomicxcore.api.conversation.ConversationGroupStore.kt（HybridAPI: ConversationGroupAPI.kt）
- *
- * **重要：Android / iOS 实现差异**
- * - Android：`state.groupList: List<String>` —— 仅分组名数组
- * - iOS：`state.groupList: [ConversationGroupInfo]` —— 富对象
- *
- * 本 state 按 Android 实际推送（字符串数组）落地；
- * 富数据（unreadCount / 分组下会话）由业务层基于 ConversationListStore 二次组合：
- *
- * ```ts
- * const cgState = useConversationGroupState();
- * await cgState.loadGroups();  // 拿到 string[] 分组名
- *
- * // 拿到某分组下的会话列表
- * const convState = useConversationListState({ conversationGroup: groupName });
- * await convState.loadConversations();
- * ```
+ * 注意：Android 实际推送的 groupList 是 `string[]`（仅分组名）；
+ * iOS 推送的是富对象（含 conversationList / totalUnreadCount 等）。
+ * uniapp 侧统一按字符串数组处理；分组下的会话列表请用
+ * `useConversationListState({ conversationGroup: name })` 二次拉取。
  */
-import { ref, type Ref } from "vue";
-import type { HybridCallOptions } from "@/uni_modules/tuikit-atomic-x";
-import { callAPI, addListener, removeListener } from "@/uni_modules/tuikit-atomic-x";
+import { makeReactive } from "../utils/reactiveCompat";
+// @ts-ignore
 import { safeJsonParse } from "../utils/utsUtils";
-import type { HybridResponseData } from "../types/hybridService";
+// @ts-ignore
+import { callAPI, addListener, removeListener } from "../utils/tuikitBridge";
+import { BuiltInGroup } from "../types/conversationGroup";
 
-/**
- * 获取全局 InstanceMap
- */
+declare const getApp: any;
+
 function getGlobalInstanceMap(): Map<string, ConversationGroupState> {
   try {
     const app = getApp();
@@ -46,47 +33,36 @@ function getGlobalInstanceMap(): Map<string, ConversationGroupState> {
 
 const InstanceMap = getGlobalInstanceMap();
 
-/**
- * 会话分组状态管理类
- */
 class ConversationGroupState {
+  private static readonly STORE_NAME = "ConversationGroup";
+
   public readonly instanceId: string;
 
-  /** 分组名列表（Android 实际推送形态） */
-  public readonly groupList: Ref<string[]>;
+  /** 分组名数组（Android 实际推送形态） */
+  public readonly groupList: { value: string[] };
 
   private constructor(instanceId: string) {
     this.instanceId = instanceId;
-    this.groupList = ref<string[]>([]);
-
+    this.groupList = makeReactive({ value: [] });
     this.createStore();
   }
 
-  public static getInstance(instanceId?: string): ConversationGroupState {
-    const finalId = instanceId || JSON.stringify({
-      storeName: "ConversationGroup",
-    });
-
-    if (!InstanceMap.has(finalId)) {
-      InstanceMap.set(finalId, new ConversationGroupState(finalId));
+  public static getInstance(instanceId: string): ConversationGroupState {
+    if (!InstanceMap.has(instanceId)) {
+      InstanceMap.set(instanceId, new ConversationGroupState(instanceId));
     }
-    return InstanceMap.get(finalId)!;
+    return InstanceMap.get(instanceId)!;
   }
 
-  private createStore(): void {
-    const options: HybridCallOptions = {
+  private createStore() {
+    callAPI(JSON.stringify({
       api: "createStore",
-      params: {
-        createStoreParams: this.instanceId,
-      },
-    };
-
-    callAPI(JSON.stringify(options), (response: string) => {
+      params: { createStoreParams: this.instanceId }
+    }), (response: string) => {
       try {
-        const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
+        const result = safeJsonParse<any>(response, {});
         if (result.code === 0) {
           this.bindEvent();
-          // 自动拉取一次分组列表
           this.loadGroups();
         } else {
           console.error(`[${this.instanceId}][createStore] Failed:`, result.message);
@@ -99,214 +75,95 @@ class ConversationGroupState {
 
   private bindEvent(): void {
     addListener({
-      type: "",
-      store: "ConversationGroup",
-      name: "groupList",
-      params: { createStoreParams: this.instanceId },
+      type: "", store: ConversationGroupState.STORE_NAME, name: "groupList",
+      params: { createStoreParams: this.instanceId }
     }, (data: string) => {
       try {
         const result = safeJsonParse<any>(data, {});
-        // Android 推送 string[]；如果是 iOS 富对象，做兼容映射
-        const list = safeJsonParse<any[]>(result.groupList, []);
-        if (Array.isArray(list) && list.length > 0 && typeof list[0] === 'object') {
-          // iOS 富对象：取 groupName
-          this.groupList.value = list.map((item: any) => item?.groupName || '').filter(Boolean);
-        } else {
-          // Android 字符串数组
-          this.groupList.value = list as string[];
+        const raw = safeJsonParse<any>(result.groupList, []);
+        // Android: string[]; iOS: Array<{ groupName: string }>
+        let names: string[] = [];
+        if (Array.isArray(raw)) {
+          names = raw.map((it: any) => typeof it === 'string' ? it : (it && it.groupName) || '').filter(Boolean);
         }
+        this.groupList.value = names;
       } catch (error) {
         console.error(`[${this.instanceId}][groupList listener] Error:`, error);
       }
     });
   }
 
-  // ============================================================================
-  // Actions
-  // ============================================================================
+  // ==================== 新版 API ====================
 
-  /**
-   * 拉取分组列表（旧名 loadGroupList）
-   */
-  loadGroups = async (): Promise<void> => {
+  loadGroups = (): Promise<void> => this.callSimpleApi('loadGroups');
+
+  createGroup = (groupName: string, conversationIDList?: string[]): Promise<void> => {
+    const params: any = { groupName };
+    if (conversationIDList) params.conversationIDList = JSON.stringify(conversationIDList);
+    return this.callApiWithParams('createGroup', params);
+  }
+
+  deleteGroup = (groupName: string): Promise<void> =>
+    this.callApiWithParams('deleteGroup', { groupName });
+
+  renameGroup = (oldName: string, newName: string): Promise<void> =>
+    this.callApiWithParams('renameGroup', { oldName, newName });
+
+  addConversationsToGroup = (groupName: string, conversationIDList: string[]): Promise<void> =>
+    this.callApiWithParams('addConversationsToGroup', {
+      groupName,
+      conversationIDList: JSON.stringify(conversationIDList)
+    });
+
+  deleteConversationsFromGroup = (groupName: string, conversationIDList: string[]): Promise<void> =>
+    this.callApiWithParams('deleteConversationsFromGroup', {
+      groupName,
+      conversationIDList: JSON.stringify(conversationIDList)
+    });
+
+  // ==================== 内部工具 ====================
+
+  private callSimpleApi(api: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "loadGroups",
-        params: {
-          createStoreParams: this.instanceId,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
+      callAPI(JSON.stringify({
+        api,
+        params: { createStoreParams: this.instanceId }
+      }), (response: string) => {
         try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
+          const result = safeJsonParse<any>(response, {});
           if (result.code === 0) {
             resolve();
           } else {
-            console.error(`[${this.instanceId}][loadGroups] Failed:`, result.message);
-            reject(Object.assign(new Error(result.message || 'Failed to load groups'), { errCode: result.code }));
+            console.error(`[${this.instanceId}][${api}] Failed:`, result.message);
+            reject(new Error(result.message || `${api} failed`));
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
+  }
 
-  /**
-   * 创建分组
-   */
-  createGroup = async (groupName: string, conversationIDList: string[]): Promise<void> => {
+  private callApiWithParams(api: string, extraParams: Record<string, any>): Promise<void> {
     return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "createGroup",
-        params: {
-          createStoreParams: this.instanceId,
-          groupName,
-          conversationIDList: JSON.stringify(conversationIDList),
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
+      const params: Record<string, any> = { createStoreParams: this.instanceId };
+      for (const k in extraParams) { params[k] = extraParams[k]; }
+      callAPI(JSON.stringify({ api, params }), (response: string) => {
         try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
+          const result = safeJsonParse<any>(response, {});
           if (result.code === 0) {
             resolve();
           } else {
-            reject(Object.assign(new Error(result.message || 'Failed to create group'), { errCode: result.code }));
+            console.error(`[${this.instanceId}][${api}] Failed:`, result.message);
+            reject(new Error(result.message || `${api} failed`));
           }
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
-  };
-
-  /**
-   * 删除分组
-   */
-  deleteGroup = async (groupName: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "deleteGroup",
-        params: {
-          createStoreParams: this.instanceId,
-          groupName,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
-        try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
-          if (result.code === 0) {
-            resolve();
-          } else {
-            reject(Object.assign(new Error(result.message || 'Failed to delete group'), { errCode: result.code }));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 重命名分组
-   */
-  renameGroup = async (oldName: string, newName: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "renameGroup",
-        params: {
-          createStoreParams: this.instanceId,
-          oldName,
-          newName,
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
-        try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
-          if (result.code === 0) {
-            resolve();
-          } else {
-            reject(Object.assign(new Error(result.message || 'Failed to rename group'), { errCode: result.code }));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 添加会话到分组
-   */
-  addConversationsToGroup = async (groupName: string, conversationIDList: string[]): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "addConversationsToGroup",
-        params: {
-          createStoreParams: this.instanceId,
-          groupName,
-          conversationIDList: JSON.stringify(conversationIDList),
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
-        try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
-          if (result.code === 0) {
-            resolve();
-          } else {
-            reject(Object.assign(new Error(result.message || 'Failed to add conversations to group'), { errCode: result.code }));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  /**
-   * 从分组移除会话
-   */
-  deleteConversationsFromGroup = async (groupName: string, conversationIDList: string[]): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const options: HybridCallOptions = {
-        api: "deleteConversationsFromGroup",
-        params: {
-          createStoreParams: this.instanceId,
-          groupName,
-          conversationIDList: JSON.stringify(conversationIDList),
-        },
-      };
-
-      callAPI(JSON.stringify(options), (response: string) => {
-        try {
-          const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
-          if (result.code === 0) {
-            resolve();
-          } else {
-            reject(Object.assign(new Error(result.message || 'Failed to delete conversations from group'), { errCode: result.code }));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-  };
-
-  // ============================================================================
-  // 销毁
-  // ============================================================================
+  }
 
   private unbindEvent(): void {
     removeListener({
-      type: "",
-      store: "ConversationGroup",
-      name: "groupList",
-      params: { createStoreParams: this.instanceId },
+      type: "", store: ConversationGroupState.STORE_NAME, name: "groupList",
+      params: { createStoreParams: this.instanceId }
     });
   }
 
@@ -314,26 +171,20 @@ class ConversationGroupState {
     // 幂等：实例已被销毁过，直接 return
     if (!InstanceMap.has(this.instanceId)) return;
     this.unbindEvent();
-    this.groupList.value = [];
     InstanceMap.delete(this.instanceId);
-
-    const options: HybridCallOptions = {
+    callAPI(JSON.stringify({
       api: "destroyStore",
-      params: {
-        createStoreParams: this.instanceId,
-      },
-    };
-
-    callAPI(JSON.stringify(options), () => {});
-  };
+      params: { createStoreParams: this.instanceId }
+    }), (response: string) => {
+      try { safeJsonParse<any>(response, {}); } catch (e) { console.error(e); }
+    });
+  }
 }
 
-/**
- * 会话分组状态管理 Hook
- */
-export function useConversationGroupState() {
-  return ConversationGroupState.getInstance();
+export function useConversationGroupState(instanceId?: string) {
+  const id = instanceId || JSON.stringify({ storeName: "ConversationGroup" });
+  return ConversationGroupState.getInstance(id);
 }
 
-export { ConversationGroupState };
+export { ConversationGroupState, BuiltInGroup };
 export default useConversationGroupState;
