@@ -1,6 +1,7 @@
 import { createNativeSDK } from './native-sdk.js';
 import { businessProfile, createProfileSync } from './profile.js';
 import { createUnreadMonitor } from './unread.js';
+import { readProfiles } from './profile-reader.js';
 // #ifdef APP-PLUS
 import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState';
 import { addListener, removeListener, callAPI } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
@@ -84,6 +85,11 @@ const syncProfile = createProfileSync({
     report(status, code) {
         Store.commit('$uStore', { name: 'vuex_imProfileStatus', value: status });
         if (status === 'error') console.warn('[IM] 资料同步失败，将在下次进入前台重试', code);
+        if (status === 'ready') {
+            const profile = businessProfile(Store.state.vuex_user, apiUrl);
+            console.info('[IM] 资料同步完成', JSON.stringify({ hasNickname: !!(profile && profile.nickname), hasAvatar: !!(profile && profile.avatarURL) }));
+            uni.$emit('im:profile-updated');
+        }
     }
 });
 function syncExtras() {
@@ -117,6 +123,33 @@ export function startIMLogin() {
     // nvue pages run in a separate context: only share sanitized status, never credentials.
     uni.$on('im:request-status', () => uni.$emit('im:status', Store.state.vuex_im));
     uni.$on('im:retry', () => retryIMLogin());
+    uni.$on('im:request-profiles', async event => {
+        // #ifdef APP-PLUS
+        const client = session.getClient();
+        if (!client || !event || !Array.isArray(event.userIDs)) return;
+        const ids = [...new Set(event.userIDs)].filter(id => /^user_[1-9]\d*$/.test(id));
+        const self = businessProfile(Store.state.vuex_user, apiUrl);
+        const profiles = self ? [self] : [];
+        const emit = () => { if (session.getClient() === client) uni.$emit('im:profiles', { requestID: event.requestID, profiles }); };
+        emit();
+        try {
+            for (let i = 0; i < ids.length; i += 100) {
+                if (session.getClient() !== client) return;
+                const current = await readProfiles(callAPI, ids.slice(i, i + 100));
+                if (session.getClient() !== client) return;
+                const remoteSelf = self && current.find(p => p.userID === self.userID);
+                if (remoteSelf) console.info('[IM] 资料校验', JSON.stringify({
+                    businessHasAvatar: !!self.avatarURL, sdkHasAvatar: !!remoteSelf.avatarURL,
+                    avatarMatches: self.avatarURL === remoteSelf.avatarURL,
+                    nicknameMatches: self.nickname === remoteSelf.nickname
+                }));
+                // Current business profile is authoritative for the signed-in user.
+                profiles.push(...current.filter(p => !self || p.userID !== self.userID));
+            }
+            emit();
+        } catch (error) { console.warn('[IM] 最新资料读取失败', error && error.code); }
+        // #endif
+    });
     // 同步监听身份变化；即使短时间退出后又登录同一用户，也清理旧的异步任务。
     Store.watch(() => JSON.stringify(currentAccount()), () => syncIMLogin(), { immediate: true, sync: true });
     Store.watch(() => JSON.stringify(businessProfile(Store.state.vuex_user, apiUrl)), () => syncProfile());

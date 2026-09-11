@@ -51,6 +51,7 @@
 
 <script>
 import { useConversationListState } from '../../state/ConversationListState'
+import profileView from '@/utils/im/profile-view.js'
 import { ReceiveMessageOpt } from '../../types/conversation'
 import SwipeActions from '../SwipeActions/SwipeActions.nvue'
 import DefaultPreview from './ConversationPreview.nvue'
@@ -61,6 +62,7 @@ import DefaultLoading from './placeholders/Loading.nvue'
 import DefaultLoadError from './placeholders/LoadError.nvue'
 
 export default {
+  mixins: [profileView],
   name: 'ConversationList',
   components: {
     SwipeActions,
@@ -121,6 +123,9 @@ export default {
     }
   },
   computed: {
+    profileIDs() {
+      return this.storeInstance.state.conversationList.map(c => c.conversationID.replace(/^c2c_/, '')).filter(id => /^user_[1-9]\d*$/.test(id))
+    },
     ConversationActionsComp() {
       return this.ConversationActions
     },
@@ -132,7 +137,10 @@ export default {
       if (this.sort) {
         list.sort(this.sort)
       }
-      return list
+      return list.map(c => {
+        const profile = this.currentProfiles[c.conversationID.replace(/^c2c_/, '')]
+        return profile ? { ...c, title: profile.friendRemark || profile.nickname || c.title, avatarURL: profile.avatarURL || c.avatarURL } : c
+      })
     },
     computedActionsWidth() {
       const config = this.actionsConfig || {}

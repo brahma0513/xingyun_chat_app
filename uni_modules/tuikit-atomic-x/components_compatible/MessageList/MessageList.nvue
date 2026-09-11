@@ -77,9 +77,12 @@ import { useMessageListState } from '../../state/MessageListState'
 import { useConversationListState } from '../../state/ConversationListState'
 import { MessageStatus, MessageType, MessageListType, MessageLoadDirection } from '../../types/message'
 import { rpxToPx } from '../../utils/unitUtils'
+import profileView from '@/utils/im/profile-view.js'
+import { mergeProfile } from '@/utils/im/profile-reader.js'
 
 export default {
   name: 'MessageList',
+  mixins: [profileView],
   components: {
     Message,
     MessageTimeDivider
@@ -132,6 +135,9 @@ export default {
     }
   },
   computed: {
+    profileIDs() {
+      return Array.from(new Set((this.msgState.messageList.value || []).map(m => m.from && m.from.userID).filter(Boolean)))
+    },
     messageItems() {
       var list = this.msgState.messageList.value
       if (!list || list.length === 0) return []
@@ -142,7 +148,9 @@ export default {
       var aggregationTime = this.messageAggregationTime * 1000
       var convID = this.conversationID
       for (var i = 0; i < filteredMessages.length; i++) {
-        var message = filteredMessages[i]
+        var original = filteredMessages[i]
+        var sender = original.from || {}
+        var message = { ...original, from: mergeProfile(sender, this.currentProfiles[sender.userID]) }
         var prevMessage = i > 0 ? filteredMessages[i - 1] : null
         var isCenterMessage = message.status === MessageStatus.REVOKED || message.messageType === MessageType.TIPS
         var showTimeDivider = i === 0 || (prevMessage && message.timestamp && prevMessage.timestamp && (message.timestamp - prevMessage.timestamp) > aggregationTime)
@@ -158,7 +166,7 @@ export default {
           type: 'message',
           message: message,
           showAvatar: true,
-          showNickname: convID.startsWith('group_') && !message.isSentBySelf
+          showNickname: true
         })
       }
       return items

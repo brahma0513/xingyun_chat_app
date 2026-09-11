@@ -18,16 +18,24 @@ import MessageList from '@/uni_modules/tuikit-atomic-x/components/MessageList/Me
 import MessageInput from '@/uni_modules/tuikit-atomic-x/components/MessageInput/MessageInput.nvue';
 import status from '@/utils/im/page-status.js';
 import { chatURL } from '@/utils/im/routes.js';
+import profileView from '@/utils/im/profile-view.js';
 export default {
-    mixins: [status],
+    mixins: [status, profileView],
     components: { CustomNavbar, MessageList, MessageInput },
     data() {
         const system = uni.getSystemInfoSync();
         return { conversationID: '', routeError: '', ownerID: '', inputToolbarHeight: 60, inputPanelHeight: 0,
             screenHeight: system.screenHeight || system.windowHeight, title: '聊天' };
     },
-    computed: { messageHeight() { return Math.max(80, this.screenHeight - this.inputToolbarHeight - this.inputPanelHeight); } },
+    computed: {
+        profileIDs() { return this.imReady && this.conversationID ? [this.conversationID.replace(/^c2c_/, '')] : []; },
+        messageHeight() { return Math.max(80, this.screenHeight - this.inputToolbarHeight - this.inputPanelHeight); }
+    },
     watch: {
+        currentProfiles(value) {
+            const profile = value[this.conversationID.replace(/^c2c_/, '')];
+            if (profile && (profile.friendRemark || profile.nickname)) this.title = profile.friendRemark || profile.nickname;
+        },
         'imStatus.userID'(value) {
             if (!value) return;
             if (this.ownerID && this.ownerID !== value) { this.conversationID = ''; this.routeError = '账号已切换，请返回消息列表'; }
