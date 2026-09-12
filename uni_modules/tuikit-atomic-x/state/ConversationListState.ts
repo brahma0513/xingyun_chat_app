@@ -17,6 +17,9 @@ interface ConversationLoadOption {
 }
 
 interface ConversationListReactiveState {
+  initialLoadComplete: boolean;
+  receivedList: boolean;
+  loadError: string;
   conversationList: ConversationInfo[];
   totalUnreadCount: number;
   hasMoreConversations: boolean;
@@ -51,6 +54,9 @@ class ConversationListState {
     this.instanceId = instanceId;
     this.conversationGroup = conversationGroup;
     this.state = makeReactive<ConversationListReactiveState>({
+      initialLoadComplete: false,
+      receivedList: false,
+      loadError: '',
       conversationList: [],
       totalUnreadCount: 0,
       hasMoreConversations: false,
@@ -123,11 +129,15 @@ class ConversationListState {
         const result = safeJsonParse<any>(response, {});
         if (result.code === 0) {
           this.bindEvent();
-          this.loadConversations({ pageSize: 100 });
+          this.loadConversations({ pageSize: 100 }).catch((error: any) => {
+            this.state.loadError = error.message || '加载会话失败';
+          });
         } else {
+          this.state.loadError = (result && result.message) || '创建会话失败';
           console.error(`[${this.instanceId}][createStore] Failed:`, result && result.message);
         }
       } catch (error: any) {
+        this.state.loadError = '创建会话失败';
         console.error(`[${this.instanceId}][createStore] Parse error:`, error);
       }
     });
@@ -142,6 +152,7 @@ class ConversationListState {
         const result = safeJsonParse<any>(data, {});
         const list = safeJsonParse<ConversationInfo[]>(result.conversationList, []);
         this.state.conversationList = Array.isArray(list) ? list : [];
+        this.state.receivedList = true;
       } catch (error: any) {
         console.error(`[${this.instanceId}][conversationList listener] Error:`, error);
       }
@@ -176,6 +187,7 @@ class ConversationListState {
   // ==================== 新版 API ====================
 
   loadConversations = (option: ConversationLoadOption = {}): Promise<void> => {
+    this.state.loadError = '';
     return new Promise((resolve, reject) => {
       const params: any = { createStoreParams: this.instanceId };
       const opt: any = {};
@@ -187,6 +199,7 @@ class ConversationListState {
         try {
           const result = safeJsonParse<any>(response, {});
           if (result.code === 0) {
+            this.state.initialLoadComplete = true;
             resolve();
           } else {
             console.error(`[${this.instanceId}][loadConversations] Failed:`, result && result.message);

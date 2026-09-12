@@ -25,7 +25,7 @@
 	import api from "./utils/api"
 	import config from "./utils/config"
 	import Store from '@/store'
-	import { startIMLogin, syncIMLogin } from '@/utils/im'
+	import { startIMLogin, syncIMLogin, setIMAppVisibility } from '@/utils/im'
 	// #ifdef APP-PLUS
 	import APPUpdate from '@/uni_modules/xingdian/APPUpdate/js_sdk/appUpdate';
 	// #endif
@@ -108,10 +108,11 @@
 
 		},
 		onShow: function() {
+			setIMAppVisibility(true);
 			syncIMLogin();
 			this.asyncCheckIsOnline();
 		},
-		onHide: function() {},
+		onHide: function() { setIMAppVisibility(false); },
 		methods: {
 			get_customer_info() {
 				const that = this;

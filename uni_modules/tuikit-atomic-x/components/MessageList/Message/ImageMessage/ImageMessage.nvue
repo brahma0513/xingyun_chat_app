@@ -1,9 +1,9 @@
 <template>
   <view class="image-message" :style="imageContainerStyle" @touchstart="handleTouchStart">
     <view class="image-highlight">
-      <image class="image-content" :class="{ 'image-hidden': loadingState !== 'loaded' }" :src="imageUrl" mode="aspectFill" @load="handleImageLoad" @error="handleImageError" @tap="handleImageTap" />
+      <image :key="imageAttempt" class="image-content" :class="{ 'image-hidden': loadingState !== 'loaded' }" :src="imageUrl" mode="aspectFill" @load="handleImageLoad" @error="handleImageError" @tap="handleImageTap" />
       <view v-if="loadingState === 'loading'" class="image-loading"><text class="loading-text">加载中...</text></view>
-      <view v-if="loadingState === 'error'" class="image-error"><text class="error-text">图片加载失败</text></view>
+      <view v-if="loadingState === 'error'" class="image-error" @tap="retryImage"><text class="error-text">加载失败，点击重试</text></view>
     </view>
   </view>
 </template>
@@ -24,12 +24,12 @@ export default {
   },
   data() {
     var msgState = useMessageListState({ conversationID: this.conversationID })
-    return { loadingState: 'loading', actualSize: { width: 0, height: 0 }, touchStartTime: 0, msgState: msgState }
+    return { loadingState: 'loading', imageAttempt: 0, actualSize: { width: 0, height: 0 }, touchStartTime: 0, msgState: msgState }
   },
   computed: {
     imageUrl() {
       var body = this.message.messagePayload
-      var url = (body && (body.originalImagePath || body.largeImagePath || body.thumbImagePath)) || ''
+      var url = (body && (body.thumbImagePath || body.largeImagePath || body.originalImagePath || body.thumbImageURL || body.largeImageURL || body.originalImageURL)) || ''
       if (url && url.startsWith('/') && !url.startsWith('file://')) url = 'file://' + url
       return url
     },
@@ -48,11 +48,12 @@ export default {
   },
   watch: {
     imageUrl: function(newUrl, oldUrl) {
-      if (newUrl && !oldUrl && this.loadingState === 'error') this.loadingState = 'loading'
+      if (newUrl && newUrl !== oldUrl) this.loadingState = 'loading'
     },
     'message.msgID': { handler: function(id) { if (id && !this.imageUrl) this.checkAndDownloadResource() }, immediate: true }
   },
   methods: {
+    retryImage() { this.loadingState = 'loading'; this.imageAttempt++; if (!this.imageUrl) this.checkAndDownloadResource(); },
     handleTouchStart(e) { this.touchStartTime = Date.now() },
     handleImageLoad(e) { this.loadingState = 'loaded'; if (e.detail) this.actualSize = { width: e.detail.width, height: e.detail.height } },
     handleImageError() { this.loadingState = 'error' },
@@ -66,7 +67,8 @@ export default {
       if (this.loadingState === 'loaded') {
         const { originalImageURL, originalImagePath } = this.message.messagePayload
         uni.previewImage({
-          urls: [originalImageURL || originalImagePath],
+          urls: [(originalImagePath && originalImagePath.startsWith('/') ? 'file://' + originalImagePath : originalImagePath) || originalImageURL || this.imageUrl],
+          fail: () => uni.showToast({ title: '图片预览失败，请稍后重试', icon: 'none' }),
         });
       }
     },

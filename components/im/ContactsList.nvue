@@ -1,0 +1,96 @@
+<template>
+    <view class="contacts">
+        <view v-if="error" class="empty" @tap="retry"><text class="hint">通讯录加载失败，点击重试</text></view>
+        <view v-else-if="loading" class="empty" />
+        <view v-else-if="!filtered.length" class="empty"><text class="hint">{{ search.trim() ? '没有找到联系人' : '暂无 IM 好友' }}</text></view>
+        <view v-else class="directory">
+            <list class="list" :show-scrollbar="false">
+                <cell v-for="row in rows" :key="row.key" :ref="row.key">
+                    <view v-if="row.letter" class="section" @appear="activeLetter = row.letter"><text class="section-label">{{ row.letter }}</text></view>
+                    <view v-else class="person" @tap="$emit('select', row.person)">
+                        <Avatar :src="row.person.avatarURL" :name="name(row.person)" :size="80" :pureMode="true" defaultAvatarType="user" />
+                        <view class="details"><text class="name" :numberOfLines="1">{{ name(row.person) }}</text></view>
+                    </view>
+                </cell>
+            </list>
+            <view class="index">
+                <view v-for="group in groups" :key="group.letter" class="index-item" :class="{ selected: activeLetter === group.letter }" @tap="jumpTo(group.letter)">
+                    <text class="index-label" :class="{ 'selected-label': activeLetter === group.letter }">{{ group.letter }}</text>
+                </view>
+            </view>
+        </view>
+    </view>
+</template>
+<script>
+import Avatar from '@/uni_modules/tuikit-atomic-x/components/Avatar';
+import { callAPI, addListener, removeListener } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
+import { createContactsReader } from '@/utils/im/contacts.js';
+import { getChinesePinyinFirstLetter } from '@/uni_modules/tuikit-atomic-x/utils/getChinesePinyinFirstLetter';
+export default {
+    components: { Avatar },
+    props: { search: { type: String, default: '' }, selfID: { type: String, default: '' } },
+    data() { return { people: [], loading: true, error: false, activeLetter: '' }; },
+    computed: {
+        filtered() {
+            const query = this.search.trim().toLowerCase();
+            return this.people.filter(p => p.userID !== this.selfID && (!query || [p.friendRemark, p.nickname, p.userID].join(' ').toLowerCase().includes(query)))
+                .sort((a, b) => this.name(a).localeCompare(this.name(b), 'zh-CN'));
+        },
+        groups() {
+            const grouped = {};
+            this.filtered.forEach(person => {
+                const initial = getChinesePinyinFirstLetter(this.name(person).trim().charAt(0)).charAt(0).toUpperCase();
+                const letter = /^[A-Z]$/.test(initial) ? initial : '#';
+                (grouped[letter] || (grouped[letter] = [])).push(person);
+            });
+            return Object.keys(grouped).sort((a, b) => a === b ? 0 : a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b))
+                .map(letter => ({ letter, people: grouped[letter] }));
+        },
+        rows() {
+            const rows = [];
+            this.groups.forEach(group => {
+                rows.push({ key: 'letter-' + group.letter, letter: group.letter });
+                group.people.forEach(person => rows.push({ key: person.userID, person }));
+            });
+            return rows;
+        }
+    },
+    mounted() { this.connect(); },
+    beforeDestroy() { if (this._reader) this._reader.dispose(); },
+    methods: {
+        jumpTo(letter) {
+            const ref = this.$refs['letter-' + letter];
+            const element = Array.isArray(ref) ? ref[0] : ref;
+            if (!element) return;
+            uni.requireNativePlugin('dom').scrollToElement(element, { offset: 0, animated: false });
+            this.activeLetter = letter;
+        },
+        name(person) { return person.friendRemark || person.nickname || person.userID; },
+        connect() {
+            this.loading = true; this.error = false;
+            this._reader = createContactsReader({ callAPI, addListener, removeListener,
+                onChange: people => { this.people = people; this.loading = false; this.error = false; },
+                onError: () => { this.loading = false; this.error = true; }
+            });
+        },
+        retry() { if (this._reader) this._reader.dispose(); this.connect(); }
+    }
+};
+</script>
+<style>
+.contacts { flex: 1; background-color: #ffffff; }
+.list { flex: 1; }
+.directory { flex: 1; flex-direction: row; }
+.person { flex-direction: row; align-items: center; padding: 0 16px; }
+.details { flex: 1; margin-left: 16px; height: 60px; justify-content: center; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
+.name { font-size: 17px; font-weight: 500; color: #101b2b; lines: 1; text-overflow: ellipsis; }
+.section { height: 28px; justify-content: center; padding-left: 16px; background-color: #f4f5f8; }
+.section-label { font-size: 13px; color: #8992a3; }
+.index { width: 28px; justify-content: center; align-items: center; }
+.index-item { width: 24px; height: 22px; border-radius: 12px; justify-content: center; align-items: center; }
+.index-label { font-size: 11px; color: #8992a3; }
+.selected { background-color: #101b2b; }
+.selected-label { color: #ffffff; }
+.empty { flex: 1; align-items: center; justify-content: center; padding: 24px; }
+.hint { font-size: 14px; color: #8992a3; }
+</style>

@@ -2,6 +2,7 @@ import { createNativeSDK } from './native-sdk.js';
 import { businessProfile, createProfileSync } from './profile.js';
 import { createUnreadMonitor } from './unread.js';
 import { readProfiles } from './profile-reader.js';
+import { createReadState } from './read-state.js';
 // #ifdef APP-PLUS
 import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState';
 import { addListener, removeListener, callAPI } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
@@ -74,8 +75,19 @@ const nativeSDK = createNativeSDK({
     }
 });
 let unreadMonitor = null;
+let imForeground = true;
+const readState = createReadState({
+    getStatus: () => Store.state.vuex_im,
+    isForeground: () => imForeground,
+    clear: id => unreadMonitor ? unreadMonitor.clear(id) : Promise.reject({ code: 'APP_ONLY' }),
+    report: error => console.warn('[IM] 清除当前会话未读失败，下次显示或收到消息时重试', error && error.code)
+});
+function broadcastStatus() {
+    uni.$emit('im:status', { ...Store.state.vuex_im, foreground: imForeground });
+}
 // #ifdef APP-PLUS
 unreadMonitor = createUnreadMonitor({ callAPI, addListener, removeListener,
+    onReady() { uni.$emit('im:read-retry'); },
     publish(value) { Store.commit('$uStore', { name: 'vuex_imUnread', value }); }
 });
 // #endif
@@ -105,9 +117,10 @@ const session = createIMSession({
         Store.commit('$uStore', { name: 'vuex_im', value });
         const app = getApp();
         if (app && app.globalData) app.globalData.imStatus = value;
-        uni.$emit('im:status', value);
+        broadcastStatus();
         if (value.status === 'ready') Promise.resolve().then(syncExtras);
         else {
+            readState.reset();
             if (unreadMonitor) unreadMonitor.stop();
             Store.commit('$uStore', { name: 'vuex_imProfileStatus', value: 'idle' });
         }
@@ -121,7 +134,10 @@ export function startIMLogin() {
     if (started) return;
     started = true;
     // nvue pages run in a separate context: only share sanitized status, never credentials.
-    uni.$on('im:request-status', () => uni.$emit('im:status', Store.state.vuex_im));
+    uni.$on('im:request-status', broadcastStatus);
+    uni.$on('im:chat-show', event => readState.show(event));
+    uni.$on('im:chat-hide', event => readState.hide(event));
+    uni.$on('im:chat-read', event => readState.read(event));
     uni.$on('im:retry', () => retryIMLogin());
     uni.$on('im:request-profiles', async event => {
         // #ifdef APP-PLUS
@@ -153,7 +169,10 @@ export function startIMLogin() {
     // 同步监听身份变化；即使短时间退出后又登录同一用户，也清理旧的异步任务。
     Store.watch(() => JSON.stringify(currentAccount()), () => syncIMLogin(), { immediate: true, sync: true });
     Store.watch(() => JSON.stringify(businessProfile(Store.state.vuex_user, apiUrl)), () => syncProfile());
-    uni.onNetworkStatusChange((event) => { if (event.isConnected) syncIMLogin(); });
+    uni.onNetworkStatusChange((event) => { if (event.isConnected) syncIMLogin().then(() => {
+        if (unreadMonitor) unreadMonitor.refresh();
+        uni.$emit('im:read-retry');
+    }); });
 }
 
 export function syncIMLogin() {
@@ -170,3 +189,9 @@ export function syncIMLogin() {
 }
 export function retryIMLogin() { return session.sync(currentAccount(), true); }
 export function getIMClient() { return session.getClient(); }
+export function setIMAppVisibility(visible) {
+    imForeground = !!visible;
+    if (!imForeground) readState.reset();
+    broadcastStatus();
+    if (imForeground && unreadMonitor) unreadMonitor.refresh();
+}

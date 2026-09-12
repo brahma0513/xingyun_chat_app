@@ -416,7 +416,19 @@ export default {
       this.handleC2CCallMessageTap()
       this.$emit('onMessageTap', this.message)
     },
-    handleResend: function() {},
+    handleResend: function() {
+      if (this._resending || !this.message.isSentBySelf || this.message.status !== MessageStatus.SEND_FAIL) return
+      if (this.message.messageType === MessageType.AUDIO) {
+        uni.$emit('im:retry-voice', { conversationID: this.conversationID, message: this.message })
+        return
+      }
+      if (this.message.messageType !== MessageType.IMAGE) {
+        uni.showToast({ title: '请重新输入并发送这条消息', icon: 'none' })
+        return
+      }
+      // The page owns session validation and the current native input instance.
+      uni.$emit('im:retry-image', { conversationID: this.conversationID, message: this.message })
+    },
     handleActionsClose: function() {
       this.showActions = false
       var self = this

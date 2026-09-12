@@ -1,8 +1,12 @@
 // SDK 实例与 UserSig 仅驻留内存；串行处理登录和销毁，避免切换账号串号。
-export function createIMSession({ sdk, credentials, publish, readyTimeout = 20000 }) {
+export function createIMSession({ sdk, credentials, publish, readyTimeout = 20000,
+    accountIdentity = account => JSON.stringify([String(account.userID), String(account.customerID || '')]) }) {
     let client = null;
     let desired = '';
     let revision = 0;
+    // Business-login lifetime, independent of credential refresh / SDK retries.
+    let identity = '';
+    let accountRevision = 0;
     let queue = Promise.resolve();
     let pending = null;
     let phase = 'idle';
@@ -11,7 +15,7 @@ export function createIMSession({ sdk, credentials, publish, readyTimeout = 2000
 
     function state(status, extra = {}) {
         phase = status;
-        publish(Object.assign({ status, userID: '', sdkAppID: 0, error: '' }, extra));
+        publish(Object.assign({ status, userID: '', sdkAppID: 0, error: '', sessionID: revision, accountSessionID: accountRevision }, extra));
     }
 
     async function dispose() {
@@ -24,6 +28,8 @@ export function createIMSession({ sdk, credentials, publish, readyTimeout = 2000
 
     function sync(account, force = false) {
         const key = account ? JSON.stringify(account) : '';
+        const nextIdentity = account ? accountIdentity(account) : '';
+        if (nextIdentity !== identity) { identity = nextIdentity; accountRevision++; }
         if (force || key !== desired) blocked = '';
         if (key && key === blocked) return Promise.resolve();
         if (!force && key === desired && (pending || phase === 'ready' || phase === 'connecting' || (!key && phase === 'idle'))) {
@@ -73,7 +79,7 @@ export function createIMSession({ sdk, credentials, publish, readyTimeout = 2000
             try {
                 // 以 SDK_READY 为可用判据；登录失败也应立即结束等待。
                 instance.login({ userID: info.userID, userSig: info.userSig })
-                    .then(() => { if (live() && instance.isReady()) { state('ready', detail); finish(); } })
+                    .then(() => { if (live() && blocked !== key && instance.isReady()) { if (phase !== 'ready') state('ready', detail); finish(); } })
                     .catch(finish);
                 await ready;
             } finally {

@@ -1,15 +1,17 @@
 <template>
     <view class="page">
         <CustomNavbar position="fixed" :title="title" :showBack="true" :showMenu="false" @back="goBack" />
-        <view v-if="imReady && conversationID" class="chat-body">
+        <view v-if="!routeError && imReady && conversationID" :key="imStatus.sessionID" class="chat-body">
             <view :style="{ height: messageHeight + 'px' }" @tap="collapse">
                 <MessageList :key="imStatus.userID + conversationID" :conversationID="conversationID"
+                    :onReadRequest="requestRead"
                     :inputToolbarHeight="inputToolbarHeight" :inputPanelHeight="inputPanelHeight" @onMessageListTap="collapse" />
             </view>
-            <MessageInput ref="input" :conversationID="conversationID" :enableVoice="false"
-                :enableTools="false" :enableEmoji="true" :toolList="[]" @heightChange="resizeInput" />
+            <MessageInput ref="input" :conversationID="conversationID" :enableVoice="true"
+                :voiceSessionID="imStatus.sessionID" :canRecordVoice="canUseVoice"
+                :enableTools="true" :enableEmoji="true" :toolList="imageTools" @heightChange="resizeInput" />
         </view>
-        <view v-else class="status" @tap="retryChat"><text class="hint">{{ routeError || imStatusText }}</text></view>
+        <view v-else class="status" @tap="handleChatStatusTap"><text v-if="chatStatusText" class="hint">{{ chatStatusText }}</text></view>
     </view>
 </template>
 <script>
@@ -19,37 +21,127 @@ import MessageInput from '@/uni_modules/tuikit-atomic-x/components/MessageInput/
 import status from '@/utils/im/page-status.js';
 import { chatURL } from '@/utils/im/routes.js';
 import profileView from '@/utils/im/profile-view.js';
+import { createImageSender } from '@/utils/im/image-send.js';
 export default {
     mixins: [status, profileView],
     components: { CustomNavbar, MessageList, MessageInput },
     data() {
         const system = uni.getSystemInfoSync();
-        return { conversationID: '', routeError: '', ownerID: '', inputToolbarHeight: 60, inputPanelHeight: 0,
-            screenHeight: system.screenHeight || system.windowHeight, title: '聊天' };
+        return { conversationID: '', routeError: '', ownerAccountSession: null, ownerIMIdentity: '', pageID: 'chat-' + Date.now() + '-' + Math.random(), inputToolbarHeight: 60, inputPanelHeight: 0,
+            screenHeight: system.screenHeight || system.windowHeight, title: '聊天', showConnectionHint: false };
     },
     computed: {
+        connectionHintPending() { return this.pageVisible && !this.routeError && !this.imReady && !['idle', 'kicked', 'error'].includes(this.imStatus.status); },
+        chatStatusText() {
+            if (this.routeError) return this.routeError;
+            if (['idle', 'kicked', 'error'].includes(this.imStatus.status)) return this.imStatusText;
+            return this.showConnectionHint ? this.imStatusText : '';
+        },
+        imageTools() { return [{ id: 'image', name: '照片', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_image.png', callback: this.chooseChatImages }]; },
+        readContext() { return { pageID: this.pageID, sessionID: this.imStatus.sessionID, conversationID: this.conversationID }; },
+        readKey() { return JSON.stringify([this.imReady, this.imStatus.sessionID, this.conversationID]); },
         profileIDs() { return this.imReady && this.conversationID ? [this.conversationID.replace(/^c2c_/, '')] : []; },
         messageHeight() { return Math.max(80, this.screenHeight - this.inputToolbarHeight - this.inputPanelHeight); }
     },
     watch: {
+        connectionHintPending: { immediate: true, handler(value) {
+            if (!value) { this.clearConnectionHint(); return; }
+            if (this._connectionHintTimer != null || this.showConnectionHint) return;
+            this._connectionHintTimer = setTimeout(() => {
+                this._connectionHintTimer = null;
+                if (this.connectionHintPending) this.showConnectionHint = true;
+            }, 500);
+        } },
+        readKey() { this.showReadPage(); this.$nextTick(() => { if (this._imageSender) this._imageSender.resume(); }); },
         currentProfiles(value) {
             const profile = value[this.conversationID.replace(/^c2c_/, '')];
             if (profile && (profile.friendRemark || profile.nickname)) this.title = profile.friendRemark || profile.nickname;
         },
-        'imStatus.userID'(value) {
-            if (!value) return;
-            if (this.ownerID && this.ownerID !== value) { this.conversationID = ''; this.routeError = '账号已切换，请返回消息列表'; }
-            this.ownerID = value;
-        }
     },
     onLoad(options) {
+        this._imageSender = createImageSender({
+            context: () => ({ sessionID: this.imStatus.sessionID, conversationID: this.conversationID, ready: this.imReady && !!this.$refs.input }),
+            choose: () => new Promise((success, fail) => uni.chooseImage({ count: 9, sourceType: ['album'], sizeType: ['compressed'], success, fail })),
+            info: src => new Promise((resolve, fail) => uni.getImageInfo({ src, fail, success: value => {
+                const path = value.path || src;
+                resolve({ ...value, path: typeof plus !== 'undefined' ? plus.io.convertLocalFileSystemURL(path) : path });
+            } })),
+            send: payload => this.$refs.input.sendImagePayload(payload),
+            notify: title => uni.showToast({ title, icon: 'none' })
+        });
+        this._readRetry = () => this.showReadPage();
+        this._retryVoice = async event => {
+            if (!this.imReady || event.conversationID !== this.conversationID || this._voiceRetryBusy) return;
+            const body = event.message && event.message.messagePayload;
+            const path = body && body.soundPath;
+            const sessionID = this.imStatus.sessionID;
+            if (!path || !(Number(body.soundDuration) > 0)) { uni.showToast({ title: '原语音已不可用，请重新录制', icon: 'none' }); return; }
+            this._voiceRetryBusy = true;
+            try {
+                const exists = await new Promise(resolve => {
+                    if (typeof plus === 'undefined') { resolve(false); return; }
+                    plus.io.resolveLocalFileSystemURL(path.startsWith('/') ? 'file://' + path : path, () => resolve(true), () => resolve(false));
+                });
+                if (!this.canUseVoice(sessionID) || !this.$refs.input) return;
+                if (!exists) { uni.showToast({ title: '原语音已不可用，请重新录制', icon: 'none' }); return; }
+                await this.$refs.input.sendVoicePayload(path, Number(body.soundDuration));
+            } catch (_) { if (this.canUseVoice(sessionID)) uni.showToast({ title: '语音重发失败，请检查网络', icon: 'none' }); }
+            finally { this._voiceRetryBusy = false; }
+        };
+        uni.$on('im:retry-voice', this._retryVoice);
+        this._retryImage = event => {
+            if (!this.imReady || event.conversationID !== this.conversationID) return;
+            const body = event.message && event.message.messagePayload;
+            if (!body || !body.originalImagePath) {
+                uni.showToast({ title: '原图片已不可用，请从相册重新选择', icon: 'none' });
+                return;
+            }
+            this._imageSender.retry(body.originalImagePath);
+        };
+        uni.$on('im:retry-image', this._retryImage);
+        uni.$on('im:read-retry', this._readRetry);
         try {
+            if (this.routeError) return;
+            if (Number(options.accountSessionID) > 0) this.ownerAccountSession = Number(options.accountSessionID);
             chatURL(options.conversationID || '');
             this.conversationID = options.conversationID;
             this.title = String(options.title || this.conversationID.replace('c2c_', '')).slice(0, 64);
+            this.onIMStatusChange(this.imStatus);
         } catch (error) { this.routeError = error.message; }
     },
+    onHide() { this.stopVoiceRecording(); this.clearConnectionHint(); this.hideReadPage(); },
+    onUnload() { this.stopVoiceRecording(); this.clearConnectionHint(); if (this._imageSender) this._imageSender.dispose(); this.hideReadPage(); uni.$off('im:read-retry', this._readRetry); uni.$off('im:retry-image', this._retryImage); uni.$off('im:retry-voice', this._retryVoice); },
     methods: {
+        canUseVoice(sessionID) { return this.imReady && !this.routeError && this.imStatus.sessionID === sessionID; },
+        stopVoiceRecording() { if (this.$refs && this.$refs.input && this.$refs.input.cancelVoiceRecording) this.$refs.input.cancelVoiceRecording(); },
+        clearConnectionHint() {
+            if (this._connectionHintTimer != null) clearTimeout(this._connectionHintTimer);
+            this._connectionHintTimer = null;
+            this.showConnectionHint = false;
+        },
+        chooseChatImages() { this.collapse(); if (this._imageSender) this._imageSender.select(); },
+        handleChatStatusTap() { if (this.routeError) this.goBack(); else this.retryChat(); },
+        onIMStatusChange(value) {
+            if (value.accountSessionID == null || this.routeError) return; // Await the App handshake; invalidated routes stay closed.
+            const imIdentity = value.status === 'ready' ? JSON.stringify([String(value.sdkAppID), String(value.userID)]) : '';
+            // SDK sessionID still invalidates components, read requests and pending images.
+            // Only a business logout/switch or changed IM identity invalidates the route.
+            if ((this.ownerAccountSession !== null && value.accountSessionID !== this.ownerAccountSession) ||
+                (imIdentity && this.ownerIMIdentity && imIdentity !== this.ownerIMIdentity)) {
+                this.hideReadPage();
+                this.conversationID = ''; this.title = '聊天'; this.currentProfiles = {};
+                this.routeError = '登录状态已变化，请返回消息列表重新进入';
+            } else if (value.status === 'ready') {
+                this.ownerAccountSession = value.accountSessionID;
+                this.ownerIMIdentity = imIdentity;
+            }
+        },
+        showReadPage() {
+            if (this.imReady && this.conversationID) uni.$emit('im:chat-show', this.readContext);
+            else this.hideReadPage();
+        },
+        hideReadPage() { uni.$emit('im:chat-hide', this.readContext); },
+        requestRead() { if (this.imReady && this.conversationID) uni.$emit('im:chat-read', this.readContext); },
         goBack() { uni.navigateBack(); },
         collapse() { if (this.$refs.input) this.$refs.input.collapse(); },
         resizeInput(value) { this.inputToolbarHeight = value.inputToolbarHeight; this.inputPanelHeight = value.inputPanelHeight; }

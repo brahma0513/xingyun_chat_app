@@ -463,6 +463,7 @@ export function useAudioPlayer(options: UseAudioPlayerOptions) {
   }
   
   const play = async (url: string) => {
+    if (isDestroyed) return
     if (!url) {
       console.error('[useAudioPlayer] play: url is empty')
       return

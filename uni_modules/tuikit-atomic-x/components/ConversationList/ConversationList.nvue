@@ -1,8 +1,6 @@
 <template>
   <view class="conversation-list">
-    <view v-if="isLoading && PlaceholderLoading" class="conversation-list__placeholder">
-      <component :is="PlaceholderLoading" />
-    </view>
+    <view v-if="isLoading" class="conversation-list__placeholder" />
 
     <view v-else-if="loadError && PlaceholderLoadError" class="conversation-list__placeholder">
       <component :is="PlaceholderLoadError" :error="loadError" />
@@ -115,14 +113,17 @@ export default {
     const storeInstance = useConversationListState()
     return {
       storeInstance,
-      isLoading: false,
       loadingMore: false,
-      loadError: null,
       openedSwipeActionId: null,
       isCleaned: false,
     }
   },
   computed: {
+    isLoading() {
+      const state = this.storeInstance.state
+      return !state.loadError && (!state.initialLoadComplete || !state.receivedList)
+    },
+    loadError() { return this.storeInstance.state.loadError },
     profileIDs() {
       return this.storeInstance.state.conversationList.map(c => c.conversationID.replace(/^c2c_/, '')).filter(id => /^user_[1-9]\d*$/.test(id))
     },
@@ -131,16 +132,13 @@ export default {
     },
     filteredAndSortedList() {
       let list = [...this.storeInstance.state.conversationList]
-      if (this.filter) {
-        list = list.filter(this.filter)
-      }
       if (this.sort) {
         list.sort(this.sort)
       }
       return list.map(c => {
         const profile = this.currentProfiles[c.conversationID.replace(/^c2c_/, '')]
         return profile ? { ...c, title: profile.friendRemark || profile.nickname || c.title, avatarURL: profile.avatarURL || c.avatarURL } : c
-      })
+      }).filter(c => !this.filter || this.filter(c))
     },
     computedActionsWidth() {
       const config = this.actionsConfig || {}
@@ -211,9 +209,6 @@ export default {
         this.closeSwipeAction()
         this.openedSwipeActionId = null
       } else {
-        if (conversation.unreadCount > 0) {
-          this.storeInstance.clearConversationUnreadCount(conversation.conversationID)
-        }
         this.$emit('conversationSelect', conversation)
       }
     },

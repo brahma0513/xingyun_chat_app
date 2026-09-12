@@ -93,7 +93,7 @@
           @touchstart="handleVoiceTouchStart"
           @touchmove="handleVoiceTouchMove"
           @touchend="handleVoiceTouchEnd"
-          @touchcancel="handleVoiceTouchEnd"
+          @touchcancel="handleVoiceTouchCancel"
         >
           <text class="message-input__record-trigger-text">按住说话</text>
         </view>
@@ -133,6 +133,7 @@ import { buildOfflinePushInfo } from '../../utils/buildOfflinePushInfo';
 import permission from '../../utils/permission';
 import { requestCallPermissions, showPermissionDialog } from '../../utils/callPermission';
 import { stopGlobalAudioPlayer, RECORDING_PSEUDO_ID } from '../../hooks/useAudioPlayer';
+import { createVoiceRecorder, getVoiceRecorderBridge } from '@/utils/im/voice-recorder.js';
 import { prewarmFilePicker } from '../../hooks/useFilePicker';
 import { useCallState } from '../../state/CallState';
 import EmojiPanel from './EmojiPanel.nvue';
@@ -206,6 +207,8 @@ export default {
   props: {
     conversationID: { type: String, default: '' },
     enableVoice: { type: Boolean, default: true },
+    voiceSessionID: { type: Number, default: 0 },
+    canRecordVoice: { type: Function, default: null },
     enableEmoji: { type: Boolean, default: true },
     enableTools: { type: Boolean, default: true },
     toolList: { type: Array, default: undefined },
@@ -288,6 +291,8 @@ export default {
     })
   },
   mounted() {
+    this._voicePause = () => this.cancelVoiceRecording()
+    if (typeof plus !== 'undefined' && plus.globalEvent) plus.globalEvent.addEventListener('pause', this._voicePause)
     uni.onKeyboardHeightChange(this._onKeyboardChange)
     // 监听撤回消息的"重新编辑"事件（组件内部自洽，不依赖业务层）
     var self = this
@@ -303,8 +308,14 @@ export default {
   beforeDestroy() { this._cleanup() },
   beforeUnmount() { this._cleanup() },
   methods: {
+    sendImagePayload(payload) {
+      if (this.isCleaned || !this.messageInputStateInst) return Promise.reject(new Error('聊天尚未就绪'))
+      return this.messageInputStateInst.sendMessage(payload)
+    },
     _cleanup() {
       if (this.isCleaned) return; this.isCleaned = true
+      if (this._voiceRecorder) this._voiceRecorder.dispose()
+      if (typeof plus !== 'undefined' && plus.globalEvent && this._voicePause) plus.globalEvent.removeEventListener('pause', this._voicePause)
       uni.offKeyboardHeightChange(this._onKeyboardChange)
       if (this._onReEditHandler) { uni.$off('atomicx-reEdit', this._onReEditHandler); this._onReEditHandler = null }
       this._stopWaveAnimation()
@@ -676,158 +687,59 @@ export default {
         this._switchMode('TEXT')
       } else {
         this._ensureMicPermission().then(function(granted) {
-          if (granted) self._switchMode('VOICE')
-        })
+          if (granted && self._voiceAllowed()) self._switchMode('VOICE')
+        }).catch(function() { if (!self.isCleaned) uni.showToast({ title: '无法获取麦克风权限，请在设置中检查', icon: 'none' }) })
       }
     },
     
-    _initRecorderManager() {
-      if (this.recorderManager) return
-      var self = this
-      this.recorderManager = uni.getRecorderManager()
-      this.recorderManager.onStart(function() {
-        self.recordStartTime = Date.now()
-        self.recordingDuration = 0
-        self.recordingTimer = setInterval(function() {
-          self.recordingDuration++
-          // 进入倒计时阶段：停止波形动画 + 重置 cancel 态
-          if (self.recordingDuration === COUNTDOWN_START_AT) {
-            self._stopWaveAnimation()
-            if (self.isCancelArea) self.isCancelArea = false
-          }
-          // 达到最大时长自动停止
-          if (self.recordingDuration >= 60) {
-            self.isAutoStopByMaxDuration = true
-            self.isCancelArea = false
-            self.handleVoiceTouchEnd()
-          }
-        }, 1000)
-        self.$nextTick(function() { self._startWaveAnimation() })
-      })
-      this.recorderManager.onStop(function(res) {
-        self.voiceTempFilePath = (res && res.tempFilePath) || ''
-        if (self.recordingTimer) { clearInterval(self.recordingTimer); self.recordingTimer = null }
-        var recordDuration = Date.now() - self.recordStartTime
-        
-        // 达到最大时长自动停止：强制发送
-        if (self.isAutoStopByMaxDuration) {
-          if (self.voiceTempFilePath && self.messageInputStateInst) {
-            self._sendVoiceMessage(self.voiceTempFilePath, Math.floor(MAX_RECORD_DURATION / 1000))
-          }
-          self._resetRecordingState(); return
-        }
-        
-        if (self.isCancelArea) {
-          self._resetRecordingState(); return
-        }
-        if (recordDuration < MIN_RECORD_DURATION) {
-          uni.showToast({ title: '录音时间太短', icon: 'none' })
-          self._resetRecordingState(); return
-        }
-        if (self.voiceTempFilePath && self.messageInputStateInst) {
-          // clamp 到 [1, 60]
-          var maxSec = Math.floor(MAX_RECORD_DURATION / 1000)
-          var durationInSeconds = Math.round(recordDuration / 1000)
-          if (durationInSeconds < 1) durationInSeconds = 1
-          if (durationInSeconds > maxSec) durationInSeconds = maxSec
-          self._sendVoiceMessage(self.voiceTempFilePath, durationInSeconds)
-        }
-        self._resetRecordingState()
-      })
-      this.recorderManager.onError(function(err) {
-        console.error('[MessageInput] Recording error:', err)
-        var errMsg = (err && err.errMsg) || ''
-        var isPermissionError = /permission|denied|auth/i.test(errMsg)
-        if (isPermissionError) showPermissionDialog(['麦克风'])
-        else uni.showToast({ title: '录音失败', icon: 'none' })
-        self._resetRecordingState()
-      })
-    },
-    
-    _resetRecordingState() {
-      this.isRecording = false
-      this.isCancelArea = false
-      this.recordingDuration = 0
-      this.voiceTempFilePath = ''
-      this.isAutoStopByMaxDuration = false
-      if (this.recordingTimer) { clearInterval(this.recordingTimer); this.recordingTimer = null }
-      this._stopWaveAnimation()
-    },
-    
-    _sendVoiceMessage(filePath, duration) {
-      if (!this.messageInputStateInst) return
-      var absolutePath = convertToAbsolutePath(filePath)
-      var messagePayload = { soundPath: absolutePath, soundDuration: duration }
-      var offlinePushInfo = buildOfflinePushInfo(this.setOfflinePushInfo, {
-        messageType: MessageType.AUDIO,
-        messagePayload: messagePayload,
-        conversationID: this.conversationID,
-      })
-      var self = this
-      this.messageInputStateInst.sendMessage({
-        type: 'audio',
-        audioFilePath: absolutePath,
-        duration: duration,
-      }, {
-        offlinePushInfo: offlinePushInfo || undefined,
-      }).then(function() {
-        self.$emit('sendVoice', filePath)
-      }).catch(function(error) {
-        console.error('[MessageInput] Voice message send failed:', error)
-        uni.showToast({ title: resolveSendError(error), icon: 'none' })
-      })
-    },
-    
-    // 语音录制 - 开始
-    handleVoiceTouchStart(e) {
-      var self = this
-      // 通话中（呼叫中 / 通话中）禁止录制语音消息，与 ToolsPanel.startCall 判定一致
+    _voiceAllowed() {
       var callStore = useCallState()
       var status = callStore && callStore.state && callStore.state.selfInfo && callStore.state.selfInfo.status
-      if (status === 1 || status === 2) {
-        uni.showToast({ title: '您正在通话中，无法录制语音消息', icon: 'none', duration: 2000 })
-        return
-      }
-      // 兜底权限检查
-      this._ensureMicPermission().then(function(granted) {
-        if (!granted) return
-        // 录音前停止所有正在播放的音频（避免边播边录）
-        stopGlobalAudioPlayer()
-        uni.$emit('audioPlayerStart', { messageId: RECORDING_PSEUDO_ID })
-        
-        self._initRecorderManager()
-        self.isRecording = true
-        self.isCancelArea = false
-        self.isAutoStopByMaxDuration = false
-        self.recordStartY = (e.touches && e.touches[0] && e.touches[0].pageY) || 0
-        self.voiceTempFilePath = ''
-        
-        self.recorderManager.start({
-          duration: MAX_RECORD_DURATION,
-          sampleRate: 16000,
-          numberOfChannels: 1,
-          encodeBitRate: 48000,
-          format: 'mp3'
+      return !this.isCleaned && this.enableVoice && status !== 1 && status !== 2 &&
+        (!this.canRecordVoice || this.canRecordVoice(this.voiceSessionID))
+    },
+    _getVoiceRecorder() {
+      if (!this._voiceRecorder) {
+        var self = this
+        this._voiceRecorder = createVoiceRecorder({
+          permission: () => self._ensureMicPermission(),
+          bridge: () => {
+            stopGlobalAudioPlayer()
+            uni.$emit('audioPlayerStart', { messageId: RECORDING_PSEUDO_ID })
+            return getVoiceRecorderBridge(uni)
+          },
+          canRecord: () => self._voiceAllowed(),
+          send: (path, duration) => self.sendVoicePayload(path, duration),
+          notify: title => uni.showToast({ title, icon: 'none' }),
+          update(value) {
+            self.isRecording = value.recording
+            self.isCancelArea = value.cancel
+            self.recordingDuration = value.seconds
+            if (value.recording && value.seconds < COUNTDOWN_START_AT) {
+              self.$nextTick(() => { if (!self.isCleaned && self.isRecording) self._startWaveAnimation() })
+            } else self._stopWaveAnimation()
+          }
         })
+      }
+      return this._voiceRecorder
+    },
+    cancelVoiceRecording() { if (this._voiceRecorder) this._voiceRecorder.cancel() },
+    sendVoicePayload(filePath, duration) {
+      if (!this._voiceAllowed() || !this.messageInputStateInst) return Promise.reject(new Error('聊天尚未就绪'))
+      return this.messageInputStateInst.sendMessage({
+        type: 'audio', audioFilePath: convertToAbsolutePath(filePath),
+        duration: Math.min(60, Math.max(1, Math.round(duration)))
       })
     },
-    
+    handleVoiceTouchStart(e) {
+      if (!this._voiceAllowed()) return
+      this._getVoiceRecorder().start((e.touches && e.touches[0] && e.touches[0].pageY) || 0)
+    },
     handleVoiceTouchMove(e) {
-      if (!this.isRecording) return
-      // 进入倒计时阶段后禁止取消
-      if (this.recordingDuration >= COUNTDOWN_START_AT) {
-        this.isCancelArea = false
-        return
-      }
-      var currentY = (e.touches && e.touches[0] && e.touches[0].pageY) || 0
-      var deltaY = this.recordStartY - currentY
-      this.isCancelArea = deltaY > CANCEL_THRESHOLD
+      if (this._voiceRecorder) this._voiceRecorder.move((e.touches && e.touches[0] && e.touches[0].pageY) || 0)
     },
-    
-    handleVoiceTouchEnd() {
-      if (!this.isRecording) return
-      this.recorderManager && this.recorderManager.stop()
-    },
+    handleVoiceTouchEnd() { if (this._voiceRecorder) this._voiceRecorder.release() },
+    handleVoiceTouchCancel() { this.cancelVoiceRecording() },
     
     // ==================== 波形动画 ====================
     _startWaveAnimation() {

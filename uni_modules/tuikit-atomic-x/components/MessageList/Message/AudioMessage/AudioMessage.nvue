@@ -255,6 +255,9 @@ export default {
   beforeUnmount: function() { this._cleanup() },
   methods: {
     _cleanup: function() {
+      if (this._audioDestroyed) return
+      this._audioDestroyed = true
+      this.pendingPlay = false
       this._stopWaveAnimation()
       if (this._audioPlayer) this._audioPlayer.destroy()
       uni.$off('audioPlayerStart', this._handleGlobalAudioStart)
@@ -276,6 +279,7 @@ export default {
       this._stopWaveAnimation()
     },
     _onPlayerError: function(error) {
+      if (this._audioDestroyed || this._audioPaused || this._isInCallNow()) return
       // 本地播放失败时，尝试远端 URL 回退（仅回退一次）
       if (!this._hasTriedRemoteFallback) {
         var remoteUrl = this._getRemoteSoundUrl()
@@ -331,6 +335,7 @@ export default {
       this.waveStep = 0
     },
     _handleGlobalAudioStart: function(data) {
+      if (data && data.messageId !== this.message.msgID) this.pendingPlay = false
       if (data && data.messageId && data.messageId !== this.message.msgID && this.playingFlag) {
         this._stopWaveAnimation()
         // stop() 内部会调 setPlaying(false) → onPlayingChange → this.playingFlag = false
@@ -338,6 +343,9 @@ export default {
       }
     },
     _handleAppHide: function() {
+      this._audioPaused = true
+      this.pendingPlay = false
+      if (this._audioPlayer) this._audioPlayer.stop()
       if (this.playingFlag) {
         this._stopWaveAnimation()
         this._audioPlayer.stop()
@@ -487,6 +495,8 @@ export default {
       this.touchStartTime = Date.now()
     },
     handlePlayTap: function() {
+      if (this._audioDestroyed) return
+      this._audioPaused = false
       // 长按判定：触摸持续时间超过阈值视为长按，交由父级 Message.nvue 处理消息操作菜单
       // 注意：判定后必须复位 touchStartTime，否则下一次"未收到 touchstart 直接 tap"
       // （nvue 部分场景事件丢失）会用旧时间戳算出极大 duration，导致正常点击被误判为长按
@@ -539,6 +549,7 @@ export default {
           self._handlePlay()
         }
       }).catch(function(err) {
+        if (self._audioDestroyed || self._audioPaused || self._isInCallNow()) { self.pendingPlay = false; return }
         console.error('[AudioMessage] preDownloadSound failed:', err)
         // 下载失败，尝试用远端 URL 直接播放作为兜底
         if (self.pendingPlay) {
@@ -566,6 +577,7 @@ export default {
      * 本地播放失败时 _onPlayerError 内会自动回退到远端
      */
     _handlePlay: function() {
+      if (this._audioDestroyed || this._audioPaused) { this.pendingPlay = false; return }
       // 通话中（呼叫中 / 通话中）禁止播放——拦截所有路径（用户主动 tap、下载完成自动播）
       // 静默 return：tap 入口已弹过 toast，下载完成的自动播放属内部流程，无需再扰民
       if (this._isInCallNow()) {

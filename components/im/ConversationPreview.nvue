@@ -1,0 +1,41 @@
+<template>
+    <view class="row" :class="{ pinned: conversation.isPinned }">
+        <view class="avatar"><component :is="Avatar" :src="conversation.avatarURL" :name="displayName" :size="104" :pureMode="true" :defaultAvatarType="defaultAvatarType" /></view>
+        <view class="content">
+            <view class="line">
+                <text class="name" :numberOfLines="1">{{ displayName }}</text>
+                <text class="time">{{ formatTime(conversation.lastMessage && conversation.lastMessage.timestamp) }}</text>
+            </view>
+            <view class="line">
+                <text class="snippet" :numberOfLines="1">{{ previewText }}</text>
+                <view v-if="unreadCount > 0 && !isMuted" class="badge"><text class="badge-text">{{ unreadCount > 99 ? '99+' : unreadCount }}</text></view>
+                <image v-else-if="isMuted" class="mute" src="/uni_modules/tuikit-atomic-x/static/icon/mute.png" />
+            </view>
+        </view>
+    </view>
+</template>
+<script>
+import BasePreview from '@/uni_modules/tuikit-atomic-x/components/ConversationList/ConversationPreview.nvue';
+export default {
+    extends: BasePreview,
+    computed: {
+        previewText() {
+            const prefix = this.conversation.draft ? '[草稿] ' : (this.isMuted && this.unreadCount > 0 ? '[' + this.unreadCount + '条] ' : '');
+            return prefix + this.messageSegments.map(segment => segment.type === 'text' ? segment.content : '[表情]').join('');
+        }
+    }
+};
+</script>
+<style>
+.row { flex-direction: row; align-items: center; padding: 0 20px; background-color: #ffffff; }
+.pinned { background-color: #f5f6f9; }
+.avatar { width: 52px; height: 52px; border-radius: 13px; overflow: hidden; margin-right: 16px; justify-content: center; align-items: center; }
+.content { flex: 1; height: 84px; justify-content: center; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
+.line { flex-direction: row; align-items: center; justify-content: space-between; height: 27px; }
+.name { flex: 1; font-size: 17px; font-weight: 600; color: #101b2b; lines: 1; text-overflow: ellipsis; margin-right: 10px; }
+.time { font-size: 12px; color: #8992a3; }
+.snippet { flex: 1; font-size: 14px; color: #8992a3; lines: 1; text-overflow: ellipsis; margin-right: 10px; }
+.badge { min-width: 21px; height: 21px; padding: 0 5px; border-radius: 12px; background-color: #101b2b; align-items: center; justify-content: center; }
+.badge-text { font-size: 12px; color: #ffffff; }
+.mute { width: 14px; height: 14px; }
+</style>

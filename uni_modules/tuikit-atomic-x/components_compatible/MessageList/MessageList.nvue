@@ -89,6 +89,7 @@ export default {
   },
   props: {
     conversationID: { type: String, default: '' },
+    onReadRequest: { type: Function, default: null },
     messageListType: { type: Number, default: 0 },
     alignment: { type: String, default: 'two-sided' },
     messageAggregationTime: { type: Number, default: 300 },
@@ -329,6 +330,7 @@ export default {
   methods: {
     markRead() {
       if (this.isCleaned) return
+      if (this.onReadRequest) { this.onReadRequest(); return }
       this.convState.clearConversationUnreadCount(this.conversationID).catch(function() {})
     },
     /**

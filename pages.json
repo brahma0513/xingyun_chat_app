@@ -23,7 +23,7 @@
     },
     {
       "path": "pages/im/conversations",
-      "style": { "navigationBarTitleText": "消息", "app-plus": { "bounce": "none" } }
+      "style": { "navigationBarTitleText": "消息", "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
     },
     {
       "path": "pages/im/chat",

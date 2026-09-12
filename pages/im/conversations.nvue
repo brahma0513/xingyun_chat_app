@@ -1,46 +1,104 @@
 <template>
     <view class="page">
-        <view class="start-row">
-            <input class="user-input" v-model="targetUser" placeholder="输入对方用户 ID" />
-            <text class="start-button" @tap="startChat">发起单聊</text>
+        <view class="search-row">
+            <image class="search-icon" src="/uni_modules/tuikit-atomic-x/static/icon/search.png" />
+            <input class="search-input" v-model="searchText" :placeholder="activeTab === 'messages' ? '搜索联系人、最近消息' : '搜索姓名、用户 ID'" placeholder-color="#8992a3" />
         </view>
-        <text v-if="imReady" class="account">当前聊天账号：{{ imStatus.userID }}</text>
-        <ConversationList v-if="imReady" :key="imStatus.userID" :filter="singleOnly" @conversationSelect="openChat" />
-        <view v-else class="status" @tap="retryChat">
+        <view v-if="imReady" ref="tabContent" class="tab-content">
+            <ConversationList v-if="activeTab === 'messages'" :key="'messages-' + imStatus.sessionID" :Preview="ListPreview" :filter="singleOnly" @conversationSelect="openChat" />
+            <ContactsList v-else :key="'contacts-' + imStatus.sessionID" :search="searchText" :selfID="imStatus.userID" @select="openContact" />
+        </view>
+        <view v-else-if="showListStatus" class="status" @tap="handleListStatusTap">
             <text class="hint">{{ imStatusText }}</text>
-            <text v-if="imStatus.status !== 'connecting'" class="action">点击重试 / 登录</text>
+            <text v-if="listStatusActionable" class="action">点击重试 / 登录</text>
+        </view>
+        <view v-if="!imReady && !showListStatus" class="pending-space" />
+        <view class="tab-bar" :style="{ paddingBottom: bottomInset + 'px' }">
+            <view class="tab" @tap="selectTab('messages')"><image class="tab-icon" mode="aspectFit" :src="activeTab === 'messages' ? tabIcons.messageSelected : tabIcons.message" @error="onTabIconError('message')" /><text class="tab-label" :class="{ 'tab-active': activeTab === 'messages' }">消息</text></view>
+            <view class="tab" @tap="selectTab('contacts')"><image class="tab-icon" mode="aspectFit" :src="activeTab === 'contacts' ? tabIcons.contactSelected : tabIcons.contact" @error="onTabIconError('contact')" /><text class="tab-label" :class="{ 'tab-active': activeTab === 'contacts' }">通讯录</text></view>
         </view>
     </view>
 </template>
 <script>
 import ConversationList from '@/uni_modules/tuikit-atomic-x/components/ConversationList/ConversationList.nvue';
+import ListPreview from '@/components/im/ConversationPreview.nvue';
+import ContactsList from '@/components/im/ContactsList.nvue';
 import status from '@/utils/im/page-status.js';
 import { singleChatID, chatURL } from '@/utils/im/routes.js';
 export default {
     mixins: [status],
-    components: { ConversationList },
-    data() { return { targetUser: '' }; },
+    components: { ConversationList, ContactsList },
+    data() {
+        const info = uni.getSystemInfoSync();
+        return { searchText: '', activeTab: 'messages', ListPreview, bottomInset: info.safeAreaInsets ? info.safeAreaInsets.bottom : 0,
+            tabIcons: {
+                message: require('@/static/im/message.png'),
+                messageSelected: require('@/static/im/message-selected.png'),
+                contact: require('@/static/im/relation.png'),
+                contactSelected: require('@/static/im/relation-selected.png')
+            }
+        };
+    },
+    computed: {
+        showListStatus() {
+            return this.pageVisible && !this.waitingForStatus && this.imStatus.foreground !== false &&
+                ['connecting', 'idle', 'kicked', 'error'].includes(this.imStatus.status);
+        },
+        listStatusActionable() { return this.showListStatus && ['idle', 'kicked', 'error'].includes(this.imStatus.status); }
+    },
+    onShow() { this.updateTabTitle(); },
     methods: {
-        singleOnly(conversation) { return /^c2c_user_[1-9]\d*$/.test(conversation.conversationID); },
-        openChat(conversation) {
-            if (!this.imReady) return;
-            try { uni.navigateTo({ url: chatURL(conversation.conversationID) + '&title=' + encodeURIComponent(conversation.title || '') }); }
+        updateTabTitle() { uni.setNavigationBarTitle({ title: this.activeTab === 'contacts' ? '通讯录' : '消息' }); },
+        onTabIconError(name) { console.warn('[IM] tab icon failed', name, this.tabIcons); },
+        selectTab(tab) {
+            if (tab === this.activeTab) return;
+            this.activeTab = tab;
+            this.updateTabTitle();
+            this.searchText = '';
+            this.$nextTick(() => {
+                const element = this.$refs.tabContent;
+                if (!element || !this.imReady || this.activeTab !== tab) return;
+                const animation = uni.requireNativePlugin('animation');
+                if (!animation || !animation.transition) return;
+                animation.transition(element, { styles: { opacity: 0.35 }, duration: 0 }, () => {
+                    if (this.$refs.tabContent !== element || !this.imReady) return;
+                    animation.transition(element, { styles: { opacity: 1 }, duration: 180, timingFunction: 'ease-out' });
+                });
+            });
+        },
+        openContact(person) {
+            try { this.openChat({ conversationID: singleChatID(person.userID, this.imStatus.userID), title: person.friendRemark || person.nickname || person.userID }); }
             catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
         },
-        startChat() {
-            if (!this.imReady) { this.retryChat(); return; }
-            try { this.openChat({ conversationID: singleChatID(this.targetUser, this.imStatus.userID) }); }
+        handleListStatusTap() { if (this.listStatusActionable) this.retryChat(); },
+        onIMStatusChange(value) { if (value.accountSessionID !== this.imStatus.accountSessionID) this.searchText = ''; },
+        singleOnly(conversation) {
+            if (!/^c2c_user_[1-9]\d*$/.test(conversation.conversationID)) return false;
+            const query = this.searchText.trim().toLowerCase();
+            const last = conversation.lastMessage || {};
+            return !query || [conversation.title, conversation.conversationID, last.messagePayload && last.messagePayload.text].filter(Boolean).join(' ').toLowerCase().includes(query);
+        },
+        openChat(conversation) {
+            if (!this.imReady) return;
+            try { uni.navigateTo({ url: chatURL(conversation.conversationID) + '&accountSessionID=' + this.imStatus.accountSessionID + '&title=' + encodeURIComponent(conversation.title || ''),
+                fail() { uni.showToast({ title: '打开聊天失败，请重试', icon: 'none' }); } }); }
             catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
         }
     }
 };
 </script>
 <style>
-.page { flex: 1; background-color: #f5f6f8; }
-.start-row { flex-direction: row; align-items: center; padding: 16px; background-color: #ffffff; }
-.user-input { flex: 1; height: 40px; padding-left: 10px; font-size: 14px; background-color: #f5f6f8; border-radius: 6px; }
-.start-button { margin-left: 12px; color: #2878ff; font-size: 15px; }
-.account { padding: 12px; font-size: 12px; color: #888888; }
+.page { flex: 1; background-color: #ffffff; }
+.pending-space { flex: 1; }
+.tab-content { flex: 1; opacity: 1; }
+.tab-bar { flex-direction: row; border-top-width: 1px; border-top-color: #eff0f4; background-color: #ffffff; }
+.tab { flex: 1; height: 58px; align-items: center; justify-content: center; }
+.tab-icon { width: 24px; height: 24px; flex-shrink: 0; margin-bottom: 4px; }
+.tab-label { font-size: 12px; color: #8992a3; }
+.tab-active { color: #101b2b; font-weight: 700; }
+.search-row { flex-direction: row; align-items: center; margin: 12px 12px 10px; padding: 0 16px; height: 44px; border-radius: 6px; background-color: #f4f5f8; }
+.search-icon { width: 20px; height: 20px; margin-right: 12px; }
+.search-input { flex: 1; height: 44px; font-size: 14px; color: #101b2b; }
 .status { flex: 1; align-items: center; justify-content: center; padding: 24px; }
 .hint { color: #666666; font-size: 15px; text-align: center; }
 .action { color: #2878ff; margin-top: 18px; font-size: 15px; }

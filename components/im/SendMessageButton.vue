@@ -13,7 +13,9 @@ export default {
             if (!this.vuex_user.token) { uni.navigateTo({ url: '/public/pages/user/login' }); return; }
             try {
                 const url = chatURL(singleChatID(this.userId, 'user_' + this.vuex_user.user_id));
-                uni.navigateTo({ url: url + '&title=' + encodeURIComponent(this.nickname.slice(0, 64)) });
+                const accountSessionID = this.vuex_im && this.vuex_im.accountSessionID;
+                uni.navigateTo({ url: url + (accountSessionID ? '&accountSessionID=' + accountSessionID : '') + '&title=' + encodeURIComponent(this.nickname.slice(0, 64)),
+                    fail() { uni.showToast({ title: '打开聊天失败，请重试', icon: 'none' }); } });
             } catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
         }
     }
