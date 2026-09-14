@@ -1,10 +1,25 @@
 <template>
     <view class="contacts">
         <view v-if="error" class="empty" @tap="retry"><text class="hint">通讯录加载失败，点击重试</text></view>
-        <view v-else-if="loading" class="empty" />
-        <view v-else-if="!filtered.length" class="empty"><text class="hint">{{ search.trim() ? '没有找到联系人' : '暂无 IM 好友' }}</text></view>
         <view v-else class="directory">
             <list class="list" :show-scrollbar="false">
+                <cell v-if="!search.trim()" key="contact-actions">
+                    <view class="quick-actions">
+                        <view class="quick-row" @tap="$emit('applications')">
+                            <view class="quick-icon new-icon"><image class="quick-image" src="/uni_modules/tuikit-atomic-x/static/icon/new-contacts.png" mode="aspectFit" /></view>
+                            <text class="quick-title">新的朋友</text>
+                            <view v-if="applicationUnread > 0" class="badge"><text class="badge-text">{{ applicationUnread > 99 ? '99+' : applicationUnread }}</text></view>
+                            <image class="arrow" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
+                        </view>
+                        <view class="quick-row" @tap="$emit('add')">
+                            <view class="quick-icon add-icon"><text class="plus">＋</text></view>
+                            <text class="quick-title">添加好友</text>
+                            <image class="arrow" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
+                        </view>
+                    </view>
+                </cell>
+                <cell v-if="loading" key="loading"><view class="inline-empty" /></cell>
+                <cell v-else-if="!filtered.length" key="empty"><view class="inline-empty"><text class="hint">{{ search.trim() ? '没有找到联系人' : '暂无 IM 好友' }}</text></view></cell>
                 <cell v-for="row in rows" :key="row.key" :ref="row.key">
                     <view v-if="row.letter" class="section" @appear="activeLetter = row.letter"><text class="section-label">{{ row.letter }}</text></view>
                     <view v-else class="person" @tap="$emit('select', row.person)">
@@ -13,7 +28,7 @@
                     </view>
                 </cell>
             </list>
-            <view class="index">
+            <view v-if="groups.length" class="index">
                 <view v-for="group in groups" :key="group.letter" class="index-item" :class="{ selected: activeLetter === group.letter }" @tap="jumpTo(group.letter)">
                     <text class="index-label" :class="{ 'selected-label': activeLetter === group.letter }">{{ group.letter }}</text>
                 </view>
@@ -26,11 +41,13 @@ import Avatar from '@/uni_modules/tuikit-atomic-x/components/Avatar';
 import { callAPI, addListener, removeListener } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
 import { createContactsReader } from '@/utils/im/contacts.js';
 import { getChinesePinyinFirstLetter } from '@/uni_modules/tuikit-atomic-x/utils/getChinesePinyinFirstLetter';
+import { useContactState } from '@/uni_modules/tuikit-atomic-x/state/ContactState';
 export default {
     components: { Avatar },
     props: { search: { type: String, default: '' }, selfID: { type: String, default: '' } },
-    data() { return { people: [], loading: true, error: false, activeLetter: '' }; },
+    data() { return { people: [], loading: true, error: false, activeLetter: '', contactState: useContactState() }; },
     computed: {
+        applicationUnread() { return Number(this.contactState.friendApplicationUnreadCount.value || 0); },
         filtered() {
             const query = this.search.trim().toLowerCase();
             return this.people.filter(p => p.userID !== this.selfID && (!query || [p.friendRemark, p.nickname, p.userID].join(' ').toLowerCase().includes(query)))
@@ -81,6 +98,18 @@ export default {
 .contacts { flex: 1; background-color: #ffffff; }
 .list { flex: 1; }
 .directory { flex: 1; flex-direction: row; }
+.quick-actions { background-color: #ffffff; padding-left: 16px; }
+.quick-row { height: 62px; flex-direction: row; align-items: center; padding-right: 16px; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
+.quick-icon { width: 40px; height: 40px; border-radius: 12px; align-items: center; justify-content: center; margin-right: 14px; }
+.new-icon { background-color: #eef2ff; }
+.add-icon { background-color: #e7f8ef; }
+.quick-image { width: 24px; height: 24px; }
+.plus { color: #169c5b; font-size: 28px; line-height: 30px; }
+.quick-title { flex: 1; color: #101b2b; font-size: 16px; font-weight: 600; }
+.arrow { width: 16px; height: 16px; margin-left: 10px; }
+.badge { min-width: 20px; height: 20px; padding-left: 5px; padding-right: 5px; border-radius: 10px; background-color: #ff4d4f; align-items: center; justify-content: center; }
+.badge-text { color: #ffffff; font-size: 11px; }
+.inline-empty { height: 110px; align-items: center; justify-content: center; }
 .person { flex-direction: row; align-items: center; padding: 0 16px; }
 .details { flex: 1; margin-left: 16px; height: 60px; justify-content: center; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
 .name { font-size: 17px; font-weight: 500; color: #101b2b; lines: 1; text-overflow: ellipsis; }

@@ -164,50 +164,77 @@ export default {
         }
 
         self.isCalling = true;
-
-        if (mediaType === 1) {
-          deviceStateInstance.openLocalCamera({ isFront: true });
-        }
-        deviceStateInstance.openLocalMicrophone({
-          fail: function(error) {
-            if (error === -1104) {
-              setTimeout(function() {
-                deviceStateInstance.openLocalMicrophone();
-              }, 200);
-            }
-          }
-        });
+        // 系统摄像头/麦克风授权弹窗会让 App 经历一次 hide/show。
+        // 在呼叫建立前先标记保护期，避免业务层前台刷新触发 IM SDK 重登并中断呼叫。
+        uni.$callSetupInProgress = true;
 
         checkCallPermissionWithDialog(mediaType).then(function(hasPermission) {
+          console.log('[ToolsPanel] call permission result:', hasPermission, 'mediaType:', mediaType);
           if (!hasPermission) {
             self.isCalling = false;
+            uni.$callSetupInProgress = false;
             return;
           }
-          reportScene('CHAT_INVOKE_CALL');
-          callStateInstance.calls({
-            participantIds: [getPeerUserID()],
-            mediaType: mediaType,
-            success: function() {
-              uni.$callSource = 'caller';
-              uni.$lastPage = getCurrentPageFullPath();
-              uni.navigateTo({
-                url: '/uni_modules/tuikit-atomic-x/pages/call?layoutTemplate=Float',
-                complete: function() { self.isCalling = false; }
-              });
-            },
-            fail: function(error) {
-              if (error === CallErrorCode.PACKAGE_NOT_PURCHASED) {
-                uni.showToast({
-                  icon: 'none',
-                  title: '您的应用还未开通音视频通话（TUICallKit）能力，您可以去控制台申请免费体验'
-                });
-                console.error('控制台申请免费体验,https://console.cloud.tencent.com/trtc');
-              }
-              self.isCalling = false;
+
+          // Android 的 plus.android.requestPermissions 不支持同一时刻并发请求。
+          // 必须先完成权限检查，再按摄像头 -> 麦克风顺序打开设备，否则 Promise 可能一直不返回。
+          var prepareDevices = Promise.resolve();
+          if (mediaType === 1) {
+            prepareDevices = prepareDevices.then(function() {
+              return deviceStateInstance.openLocalCamera({ isFront: true });
+            });
+          }
+          return prepareDevices.then(function() {
+            return deviceStateInstance.openLocalMicrophone();
+          }).then(function() {
+            var peerUserID = getPeerUserID();
+            console.log('[ToolsPanel] invoking calls:', peerUserID, 'mediaType:', mediaType);
+            try {
+              reportScene('CHAT_INVOKE_CALL');
+            } catch (reportError) {
+              // 数据上报失败不能阻断真实呼叫。
+              console.warn('[ToolsPanel] reportScene failed:', reportError);
             }
+            callStateInstance.calls({
+              participantIds: [peerUserID],
+              mediaType: mediaType,
+              success: function() {
+                console.log('[ToolsPanel] calls success:', peerUserID, 'mediaType:', mediaType);
+                uni.$callSource = 'caller';
+                uni.$callSetupInProgress = false;
+                uni.$lastPage = getCurrentPageFullPath();
+                uni.navigateTo({
+                  url: '/uni_modules/tuikit-atomic-x/pages/call?layoutTemplate=Float',
+                  complete: function() { self.isCalling = false; }
+                });
+              },
+              fail: function(error, message) {
+                console.error('[ToolsPanel] calls failed:', error, message || '');
+                if (error === CallErrorCode.PACKAGE_NOT_PURCHASED) {
+                  uni.showToast({
+                    icon: 'none',
+                    title: '您的应用还未开通音视频通话（TUICallKit）能力，您可以去控制台申请免费体验'
+                  });
+                  console.error('控制台申请免费体验,https://console.cloud.tencent.com/trtc');
+                } else if (error === CallErrorCode.ENTER_ROOM_FAILED) {
+                  uni.showToast({
+                    icon: 'none',
+                    duration: 3500,
+                    title: message || '音视频服务进房失败（-3301），请检查 TRTC 服务、应用地域和网络'
+                  });
+                } else {
+                  uni.showToast({ icon: 'none', title: message || ('发起通话失败（' + error + '）') });
+                }
+                self.isCalling = false;
+                uni.$callSetupInProgress = false;
+              }
+            });
           });
-        }).catch(function() {
+        }).catch(function(error) {
+          console.error('[ToolsPanel] call preparation failed:', error && (error.message || error));
+          uni.showToast({ icon: 'none', title: '无法打开摄像头或麦克风，请检查权限后重试' });
           self.isCalling = false;
+          uni.$callSetupInProgress = false;
         });
       } else {
         // 群聊：先跳转到用户选择页面，通过全局事件回调获取选中用户

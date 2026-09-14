@@ -119,19 +119,41 @@ test('logout and same-account login use different public session IDs', async () 
     assert.notEqual(f.states.at(-1).sessionID, oldID);
 });
 
-test('credential refresh and explicit retry change SDK generation, not business login lifetime', async () => {
+test('same-account credential refresh reuses SDK; explicit retry changes only SDK generation', async () => {
     const f = fixture({ accountIdentity: undefined, credentials: async a => info({ id: a.userID }) });
     const user = { userID: '12', customerID: 2842, token: 'test-token-a' };
     const first = f.session.sync(user); await tick(); f.instances[0].emit('ready'); await first;
     const accountID = f.states.at(-1).accountSessionID, sdkID = f.states.at(-1).sessionID;
     const refresh = f.session.sync({ ...user, userID: 12, token: 'test-token-b' });
     assert.equal(f.states.at(-1).accountSessionID, accountID);
-    assert.notEqual(f.states.at(-1).sessionID, sdkID);
-    await tick(); f.instances[1].emit('ready'); await refresh;
+    assert.equal(f.states.at(-1).sessionID, sdkID);
+    await refresh;
+    assert.equal(f.instances.length, 1);
     const retry = f.session.sync({ ...user, token: 'test-token-b' }, true);
-    await tick(); f.instances[2].emit('ready'); await retry;
+    await tick(); f.instances[1].emit('ready'); await retry;
     assert.ok(f.states.every(s => s.accountSessionID === accountID));
     assert.equal(JSON.stringify(f.states).includes('test-token'), false);
+});
+
+test('same-account token refresh during login does not cancel the in-flight native login', async () => {
+    let releaseCredentials;
+    const f = fixture({
+        accountIdentity: undefined,
+        credentials: account => new Promise(resolve => {
+            releaseCredentials = () => resolve(info({ id: account.userID }));
+        })
+    });
+    const first = f.session.sync({ userID: 12, customerID: 2842, token: 'old' });
+    await tick();
+    const refreshed = f.session.sync({ userID: 12, customerID: 2842, token: 'new' });
+    assert.equal(refreshed, first);
+    releaseCredentials();
+    await tick();
+    assert.equal(f.instances.length, 1);
+    f.instances[0].emit('ready');
+    await Promise.all([first, refreshed]);
+    assert.equal(f.states.at(-1).status, 'ready');
+    assert.equal(f.states.at(-1).sessionID, 1);
 });
 
 test('logout/relogin, account switch and tenant switch each invalidate the business lifetime immediately', async () => {

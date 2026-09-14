@@ -1,0 +1,25 @@
+<template>
+    <view class="page">
+        <CustomNavbar title="新的朋友" :showBack="true" :showMenu="false" @back="goBack" />
+        <view class="content"><FriendApplicationList @itemClick="openProfile" /></view>
+    </view>
+</template>
+<script>
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
+import { FriendApplicationList } from '@/uni_modules/tuikit-atomic-x/components/Contact';
+export default {
+    components: { CustomNavbar, FriendApplicationList },
+    methods: {
+        goBack() { uni.navigateBack(); },
+        openProfile(application) {
+            if (!application || !application.userID) return;
+            uni.$userProfileData = { application };
+            uni.navigateTo({ url: '/pages/im/user-profile?userID=' + encodeURIComponent(application.userID) });
+        }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f5f6f8; }
+.content { flex: 1; }
+</style>

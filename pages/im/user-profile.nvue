@@ -1,0 +1,134 @@
+<template>
+    <view class="page">
+        <CustomNavbar title="个人主页" :showBack="true" :showMenu="false" @back="goBack" />
+        <scroll-view class="scroll" scroll-y="true">
+            <view v-if="loading" class="state" />
+            <view v-else-if="error" class="state" @tap="load"><text class="state-text">{{ error }}，点击重试</text></view>
+            <view v-else-if="userInfo" class="profile">
+                <view class="hero">
+                    <Avatar :src="userInfo.avatarURL || ''" :name="displayName" :size="152" :pureMode="true" defaultAvatarType="user" />
+                    <text class="name" :numberOfLines="1">{{ displayName }}</text>
+                    <text class="user-id">用户 ID：{{ userInfo.userID }}</text>
+                    <text v-if="userInfo.aboutMe" class="signature" :numberOfLines="3">{{ userInfo.aboutMe }}</text>
+                </view>
+
+                <view class="info-card">
+                    <view class="info-row"><text class="info-label">昵称</text><text class="info-value" :numberOfLines="1">{{ userInfo.nickname || '未设置' }}</text></view>
+                    <view v-if="isFriend" class="info-row"><text class="info-label">好友备注</text><text class="info-value" :numberOfLines="1">{{ userInfo.friendRemark || '未设置' }}</text></view>
+                </view>
+
+                <view v-if="receivedApplication" class="request-card">
+                    <text class="request-title">好友申请</text>
+                    <text class="request-wording">{{ application.addWording || '对方申请添加你为好友' }}</text>
+                    <view class="request-actions">
+                        <view class="secondary-button" :class="{ disabled: busy }" @tap="reject"><text class="secondary-text">拒绝</text></view>
+                        <view class="primary-button half" :class="{ disabled: busy }" @tap="accept"><text class="primary-text">同意</text></view>
+                    </view>
+                </view>
+                <view v-else-if="sentApplication && !isFriend" class="waiting"><text class="waiting-text">好友申请已发送，等待对方验证</text></view>
+
+                <view v-if="!isSelf && !receivedApplication" class="actions">
+                    <view v-if="isFriend" class="primary-button" @tap="sendMessage"><text class="primary-text">发消息</text></view>
+                    <view v-else-if="!sentApplication" class="primary-button" @tap="addFriend"><text class="primary-text">添加好友</text></view>
+                </view>
+                <view v-if="isSelf" class="waiting"><text class="waiting-text">这是你自己的主页</text></view>
+            </view>
+        </scroll-view>
+    </view>
+</template>
+<script>
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
+import Avatar from '@/uni_modules/tuikit-atomic-x/components/Avatar';
+import { useContactState } from '@/uni_modules/tuikit-atomic-x/state/ContactState';
+import { chatURL } from '@/utils/im/routes.js';
+export default {
+    components: { CustomNavbar, Avatar },
+    data() { return { userID: '', userInfo: null, application: null, loading: true, error: '', busy: false, contactState: useContactState() }; },
+    computed: {
+        displayName() { return (this.userInfo && (this.userInfo.friendRemark || this.userInfo.nickname || this.userInfo.userID)) || ''; },
+        isFriend() { return !!(this.userInfo && this.userInfo.isFriend); },
+        isSelf() { return !!(this.userInfo && this.vuex_im && this.userInfo.userID === this.vuex_im.userID); },
+        receivedApplication() { return !!(this.application && Number(this.application.type) === 1 && !this.isFriend); },
+        sentApplication() { return !!(this.application && Number(this.application.type) === 2 && !this.isFriend); }
+    },
+    onLoad(options) {
+        const initial = uni.$userProfileData || {};
+        uni.$userProfileData = null;
+        this.application = initial.application || null;
+        this.userInfo = initial.userInfo || (this.application ? {
+            userID: this.application.userID, nickname: this.application.title || '', avatarURL: this.application.avatarURL || ''
+        } : null);
+        this.userID = String((options && options.userID) || (this.userInfo && this.userInfo.userID) || '');
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(this.userID)) { this.loading = false; this.error = '用户 ID 无效'; return; }
+        this.load();
+    },
+    onShow() { if (this.userID && !this.loading) this.load(); },
+    methods: {
+        goBack() { uni.navigateBack(); },
+        load() {
+            const userID = this.userID;
+            this.loading = !this.userInfo; this.error = '';
+            this.contactState.getContactInfo([userID]).then(list => {
+                if (this.userID !== userID) return;
+                if (!list || !list.length) { this.error = '没有找到该用户'; return; }
+                this.userInfo = { ...(this.userInfo || {}), ...list[0] };
+            }).catch(error => {
+                if (this.userID === userID) this.error = (error && error.message) || '用户资料加载失败';
+            }).finally(() => { if (this.userID === userID) this.loading = false; });
+        },
+        addFriend() {
+            if (this.busy || !this.userInfo) return;
+            uni.$friendVerifyData = { userInfo: this.userInfo };
+            uni.navigateTo({ url: '/pages/im/friend-verify?userID=' + encodeURIComponent(this.userID) });
+        },
+        sendMessage() {
+            if (!this.userInfo || this.isSelf) return;
+            const accountSessionID = this.vuex_im && this.vuex_im.accountSessionID;
+            uni.navigateTo({ url: chatURL('c2c_' + this.userInfo.userID) + (accountSessionID ? '&accountSessionID=' + accountSessionID : '') + '&title=' + encodeURIComponent(this.displayName) });
+        },
+        accept() { this.respond(true); },
+        reject() { this.respond(false); },
+        respond(accept) {
+            if (this.busy || !this.application) return;
+            this.busy = true;
+            const task = accept ? this.contactState.acceptFriendApplication(this.application) : this.contactState.refuseFriendApplication(this.application);
+            task.then(() => {
+                uni.showToast({ title: accept ? '已同意' : '已拒绝', icon: 'none' });
+                if (accept && this.userInfo) this.userInfo = { ...this.userInfo, isFriend: true };
+                this.application = null;
+                this.contactState.loadFriends();
+                this.contactState.loadFriendApplications();
+            }).catch(error => uni.showToast({ title: (error && error.message) || '操作失败', icon: 'none' }))
+                .finally(() => { this.busy = false; });
+        }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f5f6f8; }
+.scroll { flex: 1; }
+.state { height: 500px; align-items: center; justify-content: center; }
+.state-text { color: #8992a3; font-size: 14px; }
+.profile { padding: 20px 16px 40px; }
+.hero { align-items: center; padding: 28px 16px 24px; background-color: #ffffff; border-radius: 18px; }
+.name { max-width: 290px; margin-top: 16px; color: #101b2b; font-size: 24px; font-weight: 700; text-overflow: ellipsis; lines: 1; }
+.user-id { margin-top: 8px; color: #8992a3; font-size: 13px; }
+.signature { margin-top: 14px; color: #596273; font-size: 14px; line-height: 21px; text-align: center; }
+.info-card { margin-top: 14px; padding-left: 16px; background-color: #ffffff; border-radius: 14px; }
+.info-row { min-height: 54px; padding-right: 16px; flex-direction: row; align-items: center; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
+.info-label { width: 86px; color: #8992a3; font-size: 14px; }
+.info-value { flex: 1; color: #101b2b; font-size: 15px; text-align: right; text-overflow: ellipsis; lines: 1; }
+.request-card { margin-top: 14px; padding: 18px 16px; background-color: #ffffff; border-radius: 14px; }
+.request-title { color: #101b2b; font-size: 16px; font-weight: 700; }
+.request-wording { margin-top: 9px; color: #596273; font-size: 14px; }
+.request-actions { margin-top: 18px; flex-direction: row; }
+.actions { margin-top: 22px; }
+.primary-button { height: 48px; border-radius: 10px; background-color: #101b2b; align-items: center; justify-content: center; }
+.half { flex: 1; margin-left: 10px; }
+.primary-text { color: #ffffff; font-size: 16px; font-weight: 600; }
+.secondary-button { flex: 1; height: 48px; border-radius: 10px; background-color: #ffffff; border-width: 1px; border-color: #dfe3ea; align-items: center; justify-content: center; }
+.secondary-text { color: #101b2b; font-size: 16px; font-weight: 600; }
+.disabled { opacity: 0.55; }
+.waiting { margin-top: 18px; align-items: center; }
+.waiting-text { color: #8992a3; font-size: 14px; }
+</style>

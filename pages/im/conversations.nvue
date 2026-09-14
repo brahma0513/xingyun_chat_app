@@ -1,12 +1,15 @@
 <template>
     <view class="page">
+        <CustomNavbar :title="pageTitle" :showBack="true" :showMenu="false" @back="goBack" />
         <view class="search-row">
             <image class="search-icon" src="/uni_modules/tuikit-atomic-x/static/icon/search.png" />
             <input class="search-input" v-model="searchText" :placeholder="activeTab === 'messages' ? '搜索联系人、最近消息' : '搜索姓名、用户 ID'" placeholder-color="#8992a3" />
         </view>
         <view v-if="imReady" ref="tabContent" class="tab-content">
-            <ConversationList v-if="activeTab === 'messages'" :key="'messages-' + imStatus.sessionID" :Preview="ListPreview" :filter="singleOnly" @conversationSelect="openChat" />
-            <ContactsList v-else :key="'contacts-' + imStatus.sessionID" :search="searchText" :selfID="imStatus.userID" @select="openContact" />
+            <ConversationList v-if="activeTab === 'messages'" :key="'messages-' + imStatus.sessionID" :Preview="ListPreview" :filter="singleOnly"
+                :actionsConfig="conversationActions" @conversationSelect="openChat" />
+            <ContactsList v-else :key="'contacts-' + imStatus.sessionID" :search="searchText" :selfID="imStatus.userID"
+                @select="openContact" @add="openAddFriend" @applications="openFriendApplications" />
         </view>
         <view v-else-if="showListStatus" class="status" @tap="handleListStatusTap">
             <text class="hint">{{ imStatusText }}</text>
@@ -21,16 +24,18 @@
 </template>
 <script>
 import ConversationList from '@/uni_modules/tuikit-atomic-x/components/ConversationList/ConversationList.nvue';
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
 import ListPreview from '@/components/im/ConversationPreview.nvue';
 import ContactsList from '@/components/im/ContactsList.nvue';
 import status from '@/utils/im/page-status.js';
 import { singleChatID, chatURL } from '@/utils/im/routes.js';
 export default {
     mixins: [status],
-    components: { ConversationList, ContactsList },
+    components: { CustomNavbar, ConversationList, ContactsList },
     data() {
         const info = uni.getSystemInfoSync();
         return { searchText: '', activeTab: 'messages', ListPreview, bottomInset: info.safeAreaInsets ? info.safeAreaInsets.bottom : 0,
+            conversationActions: { isSupportPin: true, isSupportMute: false, isSupportDelete: true },
             tabIcons: {
                 message: require('@/static/im/message.png'),
                 messageSelected: require('@/static/im/message-selected.png'),
@@ -40,20 +45,23 @@ export default {
         };
     },
     computed: {
+        pageTitle() { return this.activeTab === 'contacts' ? '通讯录' : '消息'; },
         showListStatus() {
             return this.pageVisible && !this.waitingForStatus && this.imStatus.foreground !== false &&
                 ['connecting', 'idle', 'kicked', 'error'].includes(this.imStatus.status);
         },
         listStatusActionable() { return this.showListStatus && ['idle', 'kicked', 'error'].includes(this.imStatus.status); }
     },
-    onShow() { this.updateTabTitle(); },
     methods: {
-        updateTabTitle() { uni.setNavigationBarTitle({ title: this.activeTab === 'contacts' ? '通讯录' : '消息' }); },
+        goBack() {
+            const pages = getCurrentPages();
+            if (pages.length > 1) uni.navigateBack();
+            else uni.reLaunch({ url: '/pages/index/index' });
+        },
         onTabIconError(name) { console.warn('[IM] tab icon failed', name, this.tabIcons); },
         selectTab(tab) {
             if (tab === this.activeTab) return;
             this.activeTab = tab;
-            this.updateTabTitle();
             this.searchText = '';
             this.$nextTick(() => {
                 const element = this.$refs.tabContent;
@@ -67,9 +75,11 @@ export default {
             });
         },
         openContact(person) {
-            try { this.openChat({ conversationID: singleChatID(person.userID, this.imStatus.userID), title: person.friendRemark || person.nickname || person.userID }); }
-            catch (error) { uni.showToast({ title: error.message, icon: 'none' }); }
+            uni.$userProfileData = { userInfo: person };
+            uni.navigateTo({ url: '/pages/im/user-profile?userID=' + encodeURIComponent(person.userID) });
         },
+        openAddFriend() { uni.navigateTo({ url: '/pages/im/add-friend' }); },
+        openFriendApplications() { uni.navigateTo({ url: '/pages/im/friend-applications' }); },
         handleListStatusTap() { if (this.listStatusActionable) this.retryChat(); },
         onIMStatusChange(value) { if (value.accountSessionID !== this.imStatus.accountSessionID) this.searchText = ''; },
         singleOnly(conversation) {

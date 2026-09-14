@@ -241,10 +241,28 @@ export default {
       }
     },
     async handleDelete(conversationID) {
+      const confirmed = await new Promise(resolve => {
+        uni.showModal({
+          title: '删除聊天',
+          content: '删除后将从当前会话列表移除，确定删除吗？',
+          confirmText: '删除',
+          confirmColor: '#E54545',
+          success: result => resolve(!!result.confirm),
+          fail: () => resolve(false)
+        })
+      })
+      if (!confirmed) {
+        this.closeSwipeAction()
+        return
+      }
       try {
         this.$emit('conversationDelete', conversationID)
         await this.storeInstance.deleteConversation(conversationID)
-      } catch (error) {}
+      } catch (error) {
+        uni.showToast({ title: '删除聊天失败，请重试', icon: 'none' })
+      } finally {
+        this.closeSwipeAction()
+      }
     },
     closeSwipeAction() {
       if (this.openedSwipeActionId) {

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const file = fs.readFileSync(new URL('../pages/im/conversations.nvue', import.meta.url), 'utf8');
 const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
-const context = { module: { exports: {} }, status: {}, ConversationList: {}, ContactsList: {} };
+const context = { module: { exports: {} }, status: {}, CustomNavbar: {}, ConversationList: {}, ContactsList: {} };
 vm.runInNewContext(script, context);
 const component = context.module.exports;
 const mixinSource = fs.readFileSync(new URL('../utils/im/page-status.js', import.meta.url), 'utf8');

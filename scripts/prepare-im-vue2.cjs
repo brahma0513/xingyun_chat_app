@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../uni_modules/tuikit-atomic-x');
-const names = ['components', 'state', 'server'];
+const names = ['components', 'state', 'server', 'pages'];
 let count = 0;
 function copy(source, target) {
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {

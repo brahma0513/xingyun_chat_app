@@ -29,7 +29,17 @@ export function createIMSession({ sdk, credentials, publish, readyTimeout = 2000
     function sync(account, force = false) {
         const key = account ? JSON.stringify(account) : '';
         const nextIdentity = account ? accountIdentity(account) : '';
-        if (nextIdentity !== identity) { identity = nextIdentity; accountRevision++; }
+        const identityChanged = nextIdentity !== identity;
+        if (identityChanged) { identity = nextIdentity; accountRevision++; }
+        // pong 等业务接口可能只刷新 token/login_token。同一个业务账号已经在登录中
+        // 或已 READY 时，不应因此销毁并重建原生 IM：部分原生 logout 没有及时回调，
+        // 会让后续任务永久停在 connecting。新 token 留给下一次显式重试使用即可。
+        if (!force && account && !identityChanged && key !== desired &&
+            (pending || phase === 'ready' || phase === 'connecting')) {
+            desired = key;
+            blocked = '';
+            return pending || Promise.resolve();
+        }
         if (force || key !== desired) blocked = '';
         if (key && key === blocked) return Promise.resolve();
         if (!force && key === desired && (pending || phase === 'ready' || phase === 'connecting' || (!key && phase === 'idle'))) {

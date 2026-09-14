@@ -3,6 +3,8 @@ import { businessProfile, createProfileSync } from './profile.js';
 import { createUnreadMonitor } from './unread.js';
 import { readProfiles } from './profile-reader.js';
 import { createReadState } from './read-state.js';
+import { shouldDeferCallAccountSync } from './call-sync-policy.js';
+import { requestPhoneUserID } from './user-search.js';
 // #ifdef APP-PLUS
 import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState';
 import { addListener, removeListener, callAPI } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
@@ -117,6 +119,7 @@ const session = createIMSession({
         Store.commit('$uStore', { name: 'vuex_im', value });
         const app = getApp();
         if (app && app.globalData) app.globalData.imStatus = value;
+        uni.$userID = value.status === 'ready' ? value.userID : '';
         broadcastStatus();
         if (value.status === 'ready') Promise.resolve().then(syncExtras);
         else {
@@ -129,6 +132,35 @@ const session = createIMSession({
     }
 });
 let started = false;
+let deferredAccountSyncTimer = null;
+
+function shouldDeferAccountSync(account) {
+    return shouldDeferCallAccountSync({
+        account,
+        imStatus: Store.state.vuex_im || {},
+        callSetupInProgress: uni.$callSetupInProgress,
+        callSource: uni.$callSource
+    });
+}
+
+function syncAccountWithoutInterruptingCall() {
+    const account = currentAccount();
+    if (!shouldDeferAccountSync(account)) {
+        if (deferredAccountSyncTimer != null) {
+            clearTimeout(deferredAccountSyncTimer);
+            deferredAccountSyncTimer = null;
+        }
+        return syncIMLogin();
+    }
+    if (deferredAccountSyncTimer == null) {
+        console.info('[IM] 通话期间检测到同账号凭证刷新，延后 SDK 重登');
+        deferredAccountSyncTimer = setTimeout(() => {
+            deferredAccountSyncTimer = null;
+            syncAccountWithoutInterruptingCall();
+        }, 500);
+    }
+    return Promise.resolve();
+}
 
 export function startIMLogin() {
     if (started) return;
@@ -139,6 +171,18 @@ export function startIMLogin() {
     uni.$on('im:chat-hide', event => readState.hide(event));
     uni.$on('im:chat-read', event => readState.read(event));
     uni.$on('im:retry', () => retryIMLogin());
+    uni.$on('im:search-phone', async event => {
+        if (!event || !event.requestID || !/^1\d{10}$/.test(String(event.phone || ''))) return;
+        try {
+            const userID = await requestPhoneUserID(String(event.phone));
+            uni.$emit('im:search-phone-result', { requestID: event.requestID, userID });
+        } catch (error) {
+            uni.$emit('im:search-phone-result', {
+                requestID: event.requestID,
+                error: (error && error.message) || '查找用户失败'
+            });
+        }
+    });
     uni.$on('im:request-profiles', async event => {
         // #ifdef APP-PLUS
         const client = session.getClient();
@@ -167,7 +211,7 @@ export function startIMLogin() {
         // #endif
     });
     // 同步监听身份变化；即使短时间退出后又登录同一用户，也清理旧的异步任务。
-    Store.watch(() => JSON.stringify(currentAccount()), () => syncIMLogin(), { immediate: true, sync: true });
+    Store.watch(() => JSON.stringify(currentAccount()), () => syncAccountWithoutInterruptingCall(), { immediate: true, sync: true });
     Store.watch(() => JSON.stringify(businessProfile(Store.state.vuex_user, apiUrl)), () => syncProfile());
     uni.onNetworkStatusChange((event) => { if (event.isConnected) syncIMLogin().then(() => {
         if (unreadMonitor) unreadMonitor.refresh();

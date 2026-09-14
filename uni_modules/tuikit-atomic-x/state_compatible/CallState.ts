@@ -55,7 +55,8 @@ export enum NetworkQuality {
 
 // 通话错误码枚举
 export enum CallErrorCode {
-  PACKAGE_NOT_PURCHASED = 101011
+  PACKAGE_NOT_PURCHASED = 101011,
+  ENTER_ROOM_FAILED = -3301
 }
 
 export interface CallInfo {
@@ -213,10 +214,14 @@ function calls(params: CallsOptions): void {
   }), (res: string) => {
     try {
       const data = safeJsonParse(res, {}) as any;
+      console.log('[CallState] calls response:', res);
       if (data && data.code === 0) {
         if (success) { success(); }
       } else {
-        if (fail) { fail(data.code, data.message); }
+        const detail = data && data.data;
+        const message = (data && (data.message || data.msg)) ||
+          (detail && typeof detail === 'object' && (detail.message || detail.msg || detail.errorMessage)) || '';
+        if (fail) { fail(data && data.code, message); }
       }
     } catch (error: any) {
       if (fail) { fail(-1, error.message); }

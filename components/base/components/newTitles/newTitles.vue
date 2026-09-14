@@ -48,10 +48,6 @@
 			};
 		},
 		
-		created() {
-			console.log(this)
-		},
-		
 		methods:{
 			imageLoad: function (e) {
 			  var imageSize = this.imageUtil(e)

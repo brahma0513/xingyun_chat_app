@@ -9,7 +9,8 @@ export function businessProfile(user, baseURL = '') {
     else if (origin && /^(?:\.\/)?(?:uploads?|attachment|images?)\//i.test(avatarURL)) avatarURL = origin + '/' + avatarURL.replace(/^\.\//, '');
     avatarURL = avatarURL.replace(/ /g, '%20');
     if (!/^https?:\/\/[^\s]+$/i.test(avatarURL)) avatarURL = '';
-    return { userID, nickname, avatarURL };
+    // 所有 App 用户默认必须通过好友验证，避免 addFriend 直接建立关系。
+    return { userID, nickname, avatarURL, allowType: 1 };
 }
 
 // Deduplicate per native client, keep failure retryable, never apply a stale result to a new account.

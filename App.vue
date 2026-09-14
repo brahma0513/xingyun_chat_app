@@ -26,6 +26,7 @@
 	import config from "./utils/config"
 	import Store from '@/store'
 	import { startIMLogin, syncIMLogin, setIMAppVisibility } from '@/utils/im'
+	import { initCallService } from '@/uni_modules/tuikit-atomic-x/server/callService'
 	// #ifdef APP-PLUS
 	import APPUpdate from '@/uni_modules/xingdian/APPUpdate/js_sdk/appUpdate';
 	// #endif
@@ -68,6 +69,7 @@
 
 			this.get_user_client();
 			startIMLogin();
+			initCallService();
 			this.get_customer_info();
 			this.getCustomerBaseSet();
 			this.getUniappSetting();

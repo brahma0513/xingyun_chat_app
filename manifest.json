@@ -79,10 +79,10 @@
                 "privacyDescription" : {
                     "NSPhotoLibraryUsageDescription" : "选择照片用于上传头像或发送聊天图片",
                     "NSPhotoLibraryAddUsageDescription" : "用于相关商品图片保存",
-                    "NSCameraUsageDescription" : "获取图片用于头像上传",
+                    "NSCameraUsageDescription" : "用于拍摄图片、上传头像以及视频通话时展示画面",
                     "NSLocationWhenInUseUsageDescription" : "为了精准获取您附近的门店，我们希望获取您的地址位置信息权限",
                     "NSLocationAlwaysAndWhenInUseUsageDescription" : "为了精准获取您附近的门店，我们希望获取您的地址位置信息权限",
-                    "NSMicrophoneUsageDescription" : "使用麦克风录制并发送聊天语音消息"
+                    "NSMicrophoneUsageDescription" : "用于录制聊天语音以及进行语音、视频通话"
                 },
                 "idfa" : false,
                 "capabilities" : {

@@ -310,6 +310,19 @@ export function initCallService() {
     startForegroundService();
   });
 
+  // 保留底层错误的完整 msg。calls() 的同步失败有时只返回通用文案，
+  // 真正的进房失败原因会通过 onError 事件给出。
+  addCallListener('onError', function (event?: unknown) {
+    var detail: any = event;
+    try {
+      if (typeof event === 'string') detail = JSON.parse(event);
+    } catch (_error) {
+      detail = { raw: event };
+    }
+    uni.$lastCallError = detail;
+    console.error('[CallService] onError:', JSON.stringify(detail));
+  });
+
   addCallListener('onCallReceived', function (event?: unknown) {
     var res: any;
     try {

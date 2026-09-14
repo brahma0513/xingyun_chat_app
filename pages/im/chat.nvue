@@ -9,7 +9,7 @@
             </view>
             <MessageInput ref="input" :conversationID="conversationID" :enableVoice="true"
                 :voiceSessionID="imStatus.sessionID" :canRecordVoice="canUseVoice"
-                :enableTools="true" :enableEmoji="true" :toolList="imageTools" @heightChange="resizeInput" />
+                :enableTools="true" :enableEmoji="true" :toolList="chatTools" @heightChange="resizeInput" />
         </view>
         <view v-else class="status" @tap="handleChatStatusTap"><text v-if="chatStatusText" class="hint">{{ chatStatusText }}</text></view>
     </view>
@@ -37,7 +37,11 @@ export default {
             if (['idle', 'kicked', 'error'].includes(this.imStatus.status)) return this.imStatusText;
             return this.showConnectionHint ? this.imStatusText : '';
         },
-        imageTools() { return [{ id: 'image', name: '照片', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_image.png', callback: this.chooseChatImages }]; },
+        chatTools() { return [
+            { id: 'image', name: '照片', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_image.png', callback: this.chooseChatImages },
+            { id: 'voiceCall', name: '语音通话', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/voice.png' },
+            { id: 'videoCall', name: '视频通话', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/video.png' }
+        ]; },
         readContext() { return { pageID: this.pageID, sessionID: this.imStatus.sessionID, conversationID: this.conversationID }; },
         readKey() { return JSON.stringify([this.imReady, this.imStatus.sessionID, this.conversationID]); },
         profileIDs() { return this.imReady && this.conversationID ? [this.conversationID.replace(/^c2c_/, '')] : []; },

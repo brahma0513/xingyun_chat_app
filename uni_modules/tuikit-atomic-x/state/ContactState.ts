@@ -161,7 +161,10 @@ class ContactState {
         try {
           const result = safeJsonParse<HybridResponseData<{ contactInfoList: ContactInfo[] }>>(response, { code: -1 });
           if (result.code === 0) {
-            const contactInfoList = (result.data && result.data.data && result.data.data.contactInfoList) ? result.data.data.contactInfoList : [];
+            const envelope : any = result.data || {};
+            const contactInfoList = Array.isArray(envelope.contactInfoList)
+              ? envelope.contactInfoList
+              : (envelope.data && Array.isArray(envelope.data.contactInfoList) ? envelope.data.contactInfoList : []);
             resolve(contactInfoList);
           } else {
             console.error(`[${this.instanceId}][getContactInfo] Failed:`, result.message);

@@ -150,19 +150,21 @@ test('conversation and business-entry navigation carry the stable business gener
         const file = fs.readFileSync(new URL(path, import.meta.url), 'utf8');
         const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
         let url;
-        const context = { module: { exports: {} }, status: {}, ConversationList: {},
+        const context = { module: { exports: {} }, status: {}, CustomNavbar: {}, ConversationList: {}, ContactsList: {},
             chatURL: () => '/pages/im/chat?conversationID=c2c_user_12', singleChatID: () => 'c2c_user_12',
             uni: { navigateTo: options => { url = options.url; }, showToast() {} } };
         vm.runInNewContext(script, context);
         const methods = context.module.exports.methods;
         const state = { status: 'ready', sessionID: 9, accountSessionID: 2 };
         const page = { imReady: true, imStatus: state, vuex_im: state, vuex_user: { token: 'test', user_id: 1 }, userId: 12, nickname: '测试' };
-        if (methods.openChat) {
+        if (path.includes('conversations')) {
             methods.openChat.call(page, { conversationID: 'c2c_user_12' });
-            page.targetUser = '12'; methods.onIMStatusChange.call(page, { ...state, sessionID: 10 });
-            assert.equal(page.targetUser, '12');
-            methods.onIMStatusChange.call(page, { ...state, accountSessionID: 3 }); assert.equal(page.targetUser, '');
-        } else methods.open.call(page);
+            page.searchText = '测试'; methods.onIMStatusChange.call(page, { ...state, sessionID: 10 });
+            assert.equal(page.searchText, '测试');
+            methods.onIMStatusChange.call(page, { ...state, accountSessionID: 3 }); assert.equal(page.searchText, '');
+        } else {
+            methods.open.call(page);
+        }
         assert.match(url, /accountSessionID=2/); assert.doesNotMatch(url, /[?&]sessionID=/);
     }
 });

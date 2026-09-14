@@ -4,7 +4,7 @@
       <cell v-if="isLoading" key="loading"><view class="placeholder"><component v-if="PlaceholderLoading" :is="PlaceholderLoading" /></view></cell>
       <cell v-else-if="friendApplicationList.length === 0" key="empty"><view class="placeholder"><component v-if="PlaceholderEmptyList" :is="PlaceholderEmptyList" text="暂无新的好友申请" /></view></cell>
       <template v-else>
-        <cell v-for="item in friendApplicationList" :key="item.applicationID">
+        <cell v-for="item in friendApplicationList" :key="item.applicationID || item.userID">
           <view class="application-item" @tap="handleItemClick(item)">
             <component :is="Avatar" :src="item.avatarURL || ''" :name="item.title || item.applicationID" :size="80" shape="square" defaultAvatarType="user" pureMode />
             <view class="item-content">
@@ -36,28 +36,39 @@ export default {
     PlaceholderEmptyList: { type: [Object, Function], default: function() { return DefaultEmptyList } },
     PlaceholderLoading: { type: [Object, Function], default: function() { return DefaultLoading } },
   },
-  data() { var cs = useContactState(); return { contactState: cs, isLoading: false, processingIds: {} } },
+  data() { var cs = useContactState(); return { contactState: cs, isLoading: true, processingIds: {} } },
   computed: { friendApplicationList() { return this.contactState.friendApplicationList.value || [] } },
-  mounted() { this.handleClearUnreadCount() },
+  mounted() {
+    var self = this
+    this.contactState.loadFriendApplications().catch(function(error) {
+      console.error('[FriendApplicationList] load failed:', error)
+    }).then(function() {
+      self.isLoading = false
+      self.handleClearUnreadCount()
+    })
+  },
   beforeDestroy() { this.handleClearUnreadCount() },
   beforeUnmount() { this.handleClearUnreadCount() },
   methods: {
     getStatusText(item) { return item.type === 2 ? '等待验证' : '' },
+    applicationKey(item) { return item.applicationID || item.userID },
     handleItemClick(item) {
-      if (this.processingIds[item.applicationID]) return
+      if (this.processingIds[this.applicationKey(item)]) return
       this.$emit('itemClick', item)
     },
     handleAccept(item) {
-      if (this.processingIds[item.applicationID]) return
-      this.processingIds[item.applicationID] = true
+      var key = this.applicationKey(item)
+      if (this.processingIds[key]) return
+      this.processingIds[key] = true
       var self = this
-      this.contactState.acceptFriendApplication(item).then(function() { showToast({ message: '已同意', type: 'success' }); self.$emit('accept', item) }).catch(function(err) { showToast({ message: err.message || '操作失败', type: 'error' }) }).then(function() { delete self.processingIds[item.applicationID] })
+      this.contactState.acceptFriendApplication(item).then(function() { showToast({ message: '已同意', type: 'success' }); self.$emit('accept', item) }).catch(function(err) { showToast({ message: err.message || '操作失败', type: 'error' }) }).then(function() { delete self.processingIds[key] })
     },
     handleReject(item) {
-      if (this.processingIds[item.applicationID]) return
-      this.processingIds[item.applicationID] = true
+      var key = this.applicationKey(item)
+      if (this.processingIds[key]) return
+      this.processingIds[key] = true
       var self = this
-      this.contactState.refuseFriendApplication(item).then(function() { showToast({ message: '已拒绝', type: 'success' }); self.$emit('reject', item) }).catch(function(err) { showToast({ message: err.message || '操作失败', type: 'error' }) }).then(function() { delete self.processingIds[item.applicationID] })
+      this.contactState.refuseFriendApplication(item).then(function() { showToast({ message: '已拒绝', type: 'success' }); self.$emit('reject', item) }).catch(function(err) { showToast({ message: err.message || '操作失败', type: 'error' }) }).then(function() { delete self.processingIds[key] })
     },
     handleClearUnreadCount() { if (this.contactState.friendApplicationUnreadCount.value > 0) this.contactState.clearFriendApplicationUnreadCount() },
   },

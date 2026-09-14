@@ -1,0 +1,29 @@
+<template>
+    <view class="page">
+        <CustomNavbar title="申请添加好友" :showBack="true" :showMenu="false" @back="goBack" />
+        <view v-if="userInfo" class="content"><ApplicationVerify type="friend" :userInfo="userInfo" @success="success" /></view>
+        <view v-else class="empty"><text class="empty-text">用户信息已失效，请返回重试</text></view>
+    </view>
+</template>
+<script>
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
+import { ApplicationVerify } from '@/uni_modules/tuikit-atomic-x/components/Contact/ContactInfo';
+export default {
+    components: { CustomNavbar, ApplicationVerify },
+    data() { return { userInfo: null }; },
+    onLoad() {
+        if (uni.$friendVerifyData && uni.$friendVerifyData.userInfo) this.userInfo = uni.$friendVerifyData.userInfo;
+        uni.$friendVerifyData = null;
+    },
+    methods: {
+        goBack() { uni.navigateBack(); },
+        success() { setTimeout(() => uni.navigateBack(), 700); }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f5f6f8; }
+.content { flex: 1; }
+.empty { flex: 1; align-items: center; justify-content: center; }
+.empty-text { color: #8992a3; font-size: 14px; }
+</style>

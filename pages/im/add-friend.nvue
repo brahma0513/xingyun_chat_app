@@ -1,0 +1,27 @@
+<template>
+    <view class="page">
+        <CustomNavbar title="添加好友" :showBack="true" :showMenu="false" @back="goBack" />
+        <view class="content"><AddFriend :resolveUserID="resolveUserID" @userSelect="openProfile" /></view>
+    </view>
+</template>
+<script>
+import CustomNavbar from '@/uni_modules/tuikit-atomic-x/components/CustomNavbar/CustomNavbar.nvue';
+import AddFriend from '@/uni_modules/tuikit-atomic-x/components/Contact/AddFriend.nvue';
+import { resolvePhoneUserID } from '@/utils/im/phone-search-client.js';
+export default {
+    components: { CustomNavbar, AddFriend },
+    methods: {
+        resolveUserID(value) { return resolvePhoneUserID(value); },
+        goBack() { uni.navigateBack(); },
+        openProfile(user) {
+            if (!user || !user.userID) return;
+            uni.$userProfileData = { userInfo: user };
+            uni.navigateTo({ url: '/pages/im/user-profile?userID=' + encodeURIComponent(user.userID) });
+        }
+    }
+};
+</script>
+<style>
+.page { flex: 1; background-color: #f5f6f8; }
+.content { flex: 1; }
+</style>

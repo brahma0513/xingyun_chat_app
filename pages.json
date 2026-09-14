@@ -30,6 +30,26 @@
       "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustNothing" } }
     },
     {
+      "path": "pages/im/add-friend",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
+    },
+    {
+      "path": "pages/im/user-profile",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
+    },
+    {
+      "path": "pages/im/friend-verify",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustResize" } }
+    },
+    {
+      "path": "pages/im/friend-applications",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
+    },
+    {
+      "path": "uni_modules/tuikit-atomic-x/pages/call",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "popGesture": "none" } }
+    },
+    {
       "path": "pages/index_son/index_son",
       "style": {
         "navigationBarTitleText": "",

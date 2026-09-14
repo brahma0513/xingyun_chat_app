@@ -3,18 +3,18 @@
     <view class="add-friend__search">
       <view v-if="!isInputActive" class="add-friend__search-wrapper" @tap="handleActivateInput">
         <image class="add-friend__search-icon" src="/uni_modules/tuikit-atomic-x/static/icon/search.png" mode="aspectFit" />
-        <text class="add-friend__search-placeholder-text">搜索用户ID</text>
+        <text class="add-friend__search-placeholder-text">搜索手机号或用户 ID</text>
       </view>
       <view v-if="isInputActive" class="add-friend__search-wrapper" @touchstart="handleInputAreaTouchStart" @touchend="handleInputAreaTouchEnd">
         <image class="add-friend__search-icon" src="/uni_modules/tuikit-atomic-x/static/icon/search.png" mode="aspectFit" />
-        <input ref="inputRef" class="add-friend__search-input" type="text" :value="searchValue" :focus="shouldFocus" placeholder="搜索用户ID" placeholder-class="add-friend__search-placeholder" confirm-type="search" @input="handleInput" @confirm="handleSearch" @focus="handleFocus" @blur="handleBlur" />
+        <input ref="inputRef" class="add-friend__search-input" type="text" :value="searchValue" :focus="shouldFocus" placeholder="搜索手机号或用户 ID" placeholder-class="add-friend__search-placeholder" confirm-type="search" @input="handleInput" @confirm="handleSearch" @focus="handleFocus" @blur="handleBlur" />
         <view v-if="searchValue" class="add-friend__search-clear" @tap="handleClear"><image class="add-friend__search-clear-icon" src="/uni_modules/tuikit-atomic-x/static/icon/close.png" mode="aspectFit" /></view>
       </view>
     </view>
     <view v-if="!hasSearched && myUserID" class="add-friend__my-id"><text class="add-friend__my-id-text">我的用户ID：{{ myUserID }}</text></view>
     <view v-if="hasSearched" class="add-friend__result">
       <view v-if="isSearching" class="add-friend__loading"><text class="add-friend__loading-text">搜索中...</text></view>
-      <view v-else-if="searchResultList.length === 0" class="add-friend__empty"><text class="add-friend__empty-text">该用户不存在</text></view>
+      <view v-else-if="searchResultList.length === 0" class="add-friend__empty"><text class="add-friend__empty-text">{{ searchError || '该用户不存在' }}</text></view>
       <list v-else class="add-friend__list">
         <cell v-for="user in searchResultList" :key="user.userID">
           <view class="add-friend__user" @tap="handleUserClick(user)">
@@ -38,11 +38,14 @@ import { useContactState } from '../../state/ContactState'
 import { useLoginState } from '../../state/LoginState'
 import { showToast } from '../../utils/toast'
 export default {
-  props: { Avatar: { type: [Object, Function], default: function() { return AvatarComponent } } },
+  props: {
+    Avatar: { type: [Object, Function], default: function() { return AvatarComponent } },
+    resolveUserID: { type: Function, default: null },
+  },
   data() {
     var contactState = useContactState()
     var loginState = useLoginState()
-    return { searchValue: '', hasSearched: false, isSearching: false, searchResultList: [], isInputActive: false, isFocused: false, isTouchingInput: false, shouldFocus: false, contactState: contactState, loginState: loginState, debounceTimer: null }
+    return { searchValue: '', searchError: '', hasSearched: false, isSearching: false, searchResultList: [], isInputActive: false, isFocused: false, isTouchingInput: false, shouldFocus: false, contactState: contactState, loginState: loginState, debounceTimer: null }
   },
   computed: { myUserID() { return (this.loginState.state && this.loginState.state.loginUserInfo && this.loginState.state.loginUserInfo.userID) || '' } },
   onShow() {
@@ -61,20 +64,34 @@ export default {
     handleInputAreaTouchStart() { this.isTouchingInput = true },
     handleInputAreaTouchEnd() { var self = this; setTimeout(function() { self.isTouchingInput = false }, 100) },
     handleInput(e) { this.searchValue = e.detail.value || '' },
-    handleClear() { this.searchValue = ''; this.hasSearched = false; this.searchResultList = [] },
-    handleSearch() {
-      var userID = this.searchValue.trim()
-      if (!userID) { showToast('请输入用户ID'); return }
-      uni.hideKeyboard(); this.hasSearched = true; this.isSearching = true; this.searchResultList = []
-      this.$emit('search', userID)
-      var self = this
-      this.contactState.getContactInfo([userID]).then(function(list) { if (list && list.length > 0) self.searchResultList = list }).catch(function(e) { console.error('搜索用户失败:', e) }).finally(function() { self.isSearching = false })
+    handleClear() { this.searchValue = ''; this.searchError = ''; this.hasSearched = false; this.searchResultList = [] },
+    resolveSearchValue(rawValue) {
+      if (/^1\d{10}$/.test(rawValue) && this.resolveUserID) return Promise.resolve(this.resolveUserID(rawValue))
+      return Promise.resolve(/^\d+$/.test(rawValue) ? 'user_' + rawValue : rawValue)
     },
+    searchUser(silent) {
+      var rawValue = this.searchValue.trim()
+      if (!rawValue) { if (!silent) showToast('请输入手机号或用户 ID'); return Promise.resolve() }
+      if (!silent) { uni.hideKeyboard(); this.hasSearched = true; this.isSearching = true; this.searchError = ''; this.searchResultList = [] }
+      var self = this
+      return this.resolveSearchValue(rawValue).then(function(userID) {
+        if (!userID) return []
+        self.$emit('search', userID)
+        return self.contactState.getContactInfo([userID])
+      }).then(function(list) {
+        self.searchResultList = list && list.length > 0 ? list : []
+      }).catch(function(e) {
+        console.error('搜索用户失败:', e)
+        if (!silent) {
+          self.searchError = (e && e.message) || '查找用户失败'
+          showToast(self.searchError)
+        }
+      }).finally(function() { if (!silent) self.isSearching = false })
+    },
+    handleSearch() { return this.searchUser(false) },
     handleUserClick(user) { uni.hideKeyboard(); this.$emit('userSelect', user) },
     silentRefreshSearch() {
-      var userID = this.searchValue.trim(); if (!userID) return
-      var self = this
-      this.contactState.getContactInfo([userID]).then(function(list) { if (list && list.length > 0) self.searchResultList = list }).catch(function(e) { console.error('[AddFriend] silentRefreshSearch failed:', e) })
+      return this.searchUser(true)
     },
   },
 }
