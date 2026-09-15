@@ -46,7 +46,10 @@ export function createNativeSDK({ getLoginState, watchStatus }) {
                                 }
                                 resolve();
                             },
-                            fail(code) { reject({ code }); }
+                            fail(code, message) {
+                                console.warn('[IM] 原生 SDK 登录失败', JSON.stringify({ code, message: message || '' }));
+                                reject({ code });
+                            }
                         });
                     });
                     return pending;

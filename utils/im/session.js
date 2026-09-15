@@ -98,7 +98,9 @@ export function createIMSession({ sdk, credentials, publish, readyTimeout = 2000
             }
         }).catch(async (error) => {
             if (active()) {
-                if (phase !== 'kicked') state('error', { error: 'IM 登录失败，请检查配置或网络后重试', code: error && error.code });
+                const code = error && error.code != null ? error.code : 'IM_LOGIN_FAILED';
+                console.warn('[IM] 登录流程失败', JSON.stringify({ code }));
+                if (phase !== 'kicked') state('error', { error: 'IM 登录失败，请检查配置或网络后重试', code });
                 // 使 destroy() 触发的 SDK_NOT_READY 不覆盖错误/被踢状态。
                 revision++;
                 cancelReady = null;

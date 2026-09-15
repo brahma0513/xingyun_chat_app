@@ -16,9 +16,26 @@
             <text v-if="listStatusActionable" class="action">点击重试 / 登录</text>
         </view>
         <view v-if="!imReady && !showListStatus" class="pending-space" />
-        <view class="tab-bar" :style="{ paddingBottom: bottomInset + 'px' }">
-            <view class="tab" @tap="selectTab('messages')"><image class="tab-icon" mode="aspectFit" :src="activeTab === 'messages' ? tabIcons.messageSelected : tabIcons.message" @error="onTabIconError('message')" /><text class="tab-label" :class="{ 'tab-active': activeTab === 'messages' }">消息</text></view>
-            <view class="tab" @tap="selectTab('contacts')"><image class="tab-icon" mode="aspectFit" :src="activeTab === 'contacts' ? tabIcons.contactSelected : tabIcons.contact" @error="onTabIconError('contact')" /><text class="tab-label" :class="{ 'tab-active': activeTab === 'contacts' }">通讯录</text></view>
+        <view class="tab-bar" :style="{ paddingBottom: (bottomInset + 20) + 'px' }">
+            <view class="tab-shell">
+                <view ref="tabIndicator" class="tab-indicator" />
+                <view class="tab" @tap="selectTab('messages')">
+                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.message" @error="onTabIconError('message')" />
+                    <text class="tab-label" :class="{ 'tab-active': navActive === 'messages' }">消息</text>
+                </view>
+                <view class="tab" @tap="selectTab('contacts')">
+                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.contact" @error="onTabIconError('contact')" />
+                    <text class="tab-label" :class="{ 'tab-active': navActive === 'contacts' }">通讯录</text>
+                </view>
+                <view class="tab" @tap="selectTab('add')">
+                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.add" @error="onTabIconError('add')" />
+                    <text class="tab-label" :class="{ 'tab-active': navActive === 'add' }">添加</text>
+                </view>
+                <view class="tab" @tap="selectTab('profile')">
+                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.profile" @error="onTabIconError('profile')" />
+                    <text class="tab-label" :class="{ 'tab-active': navActive === 'profile' }">我的</text>
+                </view>
+            </view>
         </view>
     </view>
 </template>
@@ -34,13 +51,13 @@ export default {
     components: { CustomNavbar, ConversationList, ContactsList },
     data() {
         const info = uni.getSystemInfoSync();
-        return { searchText: '', activeTab: 'messages', ListPreview, bottomInset: info.safeAreaInsets ? info.safeAreaInsets.bottom : 0,
+        return { searchText: '', activeTab: 'messages', navActive: 'messages', navTimer: null, ListPreview, bottomInset: info.safeAreaInsets ? info.safeAreaInsets.bottom : 0,
             conversationActions: { isSupportPin: true, isSupportMute: false, isSupportDelete: true },
             tabIcons: {
                 message: require('@/static/im/message.png'),
-                messageSelected: require('@/static/im/message-selected.png'),
                 contact: require('@/static/im/relation.png'),
-                contactSelected: require('@/static/im/relation-selected.png')
+                add: require('@/uni_modules/tuikit-atomic-x/quickstart/static/tuikit/add-friend.png'),
+                profile: require('@/uni_modules/tuikit-atomic-x/quickstart/static/tuikit/profile.png')
             }
         };
     },
@@ -52,6 +69,14 @@ export default {
         },
         listStatusActionable() { return this.showListStatus && ['idle', 'kicked', 'error'].includes(this.imStatus.status); }
     },
+    onShow() {
+        if (this.navActive === this.activeTab) return;
+        this.navActive = this.activeTab;
+        this.$nextTick(() => this.animateTabIndicator(this.activeTab));
+    },
+    onUnload() {
+        if (this.navTimer != null) clearTimeout(this.navTimer);
+    },
     methods: {
         goBack() {
             const pages = getCurrentPages();
@@ -60,10 +85,36 @@ export default {
         },
         onTabIconError(name) { console.warn('[IM] tab icon failed', name, this.tabIcons); },
         selectTab(tab) {
-            if (tab === this.activeTab) return;
+            if (tab === 'add' || tab === 'profile') {
+                this.navActive = tab;
+                this.$nextTick(() => this.animateTabIndicator(tab));
+                if (this.navTimer != null) clearTimeout(this.navTimer);
+                this.navTimer = setTimeout(() => {
+                    this.navTimer = null;
+                    const url = tab === 'add' ? '/pages/im/add-friend' : '/pages/personal_center/personal_center';
+                    uni.navigateTo({ url, fail: () => {
+                        this.navActive = this.activeTab;
+                        this.$nextTick(() => this.animateTabIndicator(this.activeTab));
+                    } });
+                }, 180);
+                return;
+            }
+            if (tab === this.activeTab) {
+                if (this.navTimer != null) {
+                    clearTimeout(this.navTimer);
+                    this.navTimer = null;
+                }
+                if (this.navActive !== tab) {
+                    this.navActive = tab;
+                    this.$nextTick(() => this.animateTabIndicator(tab));
+                }
+                return;
+            }
+            this.navActive = tab;
             this.activeTab = tab;
             this.searchText = '';
             this.$nextTick(() => {
+                this.animateTabIndicator(tab);
                 const element = this.$refs.tabContent;
                 if (!element || !this.imReady || this.activeTab !== tab) return;
                 const animation = uni.requireNativePlugin('animation');
@@ -72,6 +123,20 @@ export default {
                     if (this.$refs.tabContent !== element || !this.imReady) return;
                     animation.transition(element, { styles: { opacity: 1 }, duration: 180, timingFunction: 'ease-out' });
                 });
+            });
+        },
+        animateTabIndicator(tab) {
+            const indicator = this.$refs.tabIndicator;
+            if (!indicator) return;
+            const animation = uni.requireNativePlugin('animation');
+            if (!animation || !animation.transition) return;
+            const indexes = { messages: 0, contacts: 1, add: 2, profile: 3 };
+            const offset = (indexes[tab] || 0) * 84;
+            const styles = { transform: 'translateX(' + offset + 'px)' };
+            animation.transition(indicator, {
+                styles,
+                duration: 260,
+                timingFunction: 'ease-in-out'
             });
         },
         openContact(person) {
@@ -101,11 +166,13 @@ export default {
 .page { flex: 1; background-color: #ffffff; }
 .pending-space { flex: 1; }
 .tab-content { flex: 1; opacity: 1; }
-.tab-bar { flex-direction: row; border-top-width: 1px; border-top-color: #eff0f4; background-color: #ffffff; }
-.tab { flex: 1; height: 58px; align-items: center; justify-content: center; }
-.tab-icon { width: 24px; height: 24px; flex-shrink: 0; margin-bottom: 4px; }
-.tab-label { font-size: 12px; color: #8992a3; }
-.tab-active { color: #101b2b; font-weight: 700; }
+.tab-bar { align-items: center; justify-content: center; padding-top: 12px; padding-left: 24px; padding-right: 24px; background-color: #ffffff; }
+.tab-shell { position: relative; width: 336px; height: 64px; padding: 0; flex-direction: row; border-width: 1px; border-color: #e5e5e8; border-radius: 32px; background-color: #ffffff; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12); }
+.tab-indicator { position: absolute; left: 4px; top: 4px; width: 76px; height: 56px; z-index: 1; border-radius: 28px; background-color: #eeeeF2; }
+.tab { width: 84px; height: 64px; z-index: 2; flex-direction: column; align-items: center; justify-content: center; }
+.tab-icon { width: 21px; height: 21px; flex-shrink: 0; margin-right: 0; margin-bottom: 3px; }
+.tab-label { font-size: 10px; color: #77777f; }
+.tab-active { color: #111111; font-weight: 700; }
 .search-row { flex-direction: row; align-items: center; margin: 12px 12px 10px; padding: 0 16px; height: 44px; border-radius: 6px; background-color: #f4f5f8; }
 .search-icon { width: 20px; height: 20px; margin-right: 12px; }
 .search-input { flex: 1; height: 44px; font-size: 14px; color: #101b2b; }
