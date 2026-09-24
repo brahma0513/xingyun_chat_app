@@ -26,6 +26,28 @@ test('contact selection opens a profile instead of starting a chat immediately',
     assert.doesNotMatch(method, /openChat/);
 });
 
+test('IM profile tab stays in IM and opens its own editor', () => {
+    const list = read('pages/im/conversations.nvue');
+    const selectTab = list.slice(list.indexOf('selectTab(tab) {'), list.indexOf('animateTabIndicator(tab) {'));
+    assert.match(list, /v-if="activeTab === 'profile'"/);
+    assert.match(selectTab, /if \(tab === 'add'\)/);
+    assert.doesNotMatch(selectTab, /pages\/personal_center\/personal_center/);
+    assert.match(list, /openEditProfile\(\) \{ uni\.navigateTo\(\{ url: '\/pages\/im\/edit-profile' \}\); \}/);
+});
+
+test('IM bottom navigation has four matching icons and selected states', () => {
+    const list = read('pages/im/conversations.nvue');
+    for (const name of ['message', 'contacts', 'add', 'profile']) {
+        for (const suffix of ['', '-selected']) {
+            assert.ok(fs.existsSync(path.join(root, 'static/im/tabs', name + suffix + '.png')));
+        }
+    }
+    assert.match(list, /navActive === 'messages' \? tabIcons\.messageSelected : tabIcons\.message/);
+    assert.match(list, /navActive === 'contacts' \? tabIcons\.contactsSelected : tabIcons\.contacts/);
+    assert.match(list, /navActive === 'add' \? tabIcons\.addSelected : tabIcons\.add/);
+    assert.match(list, /navActive === 'profile' \? tabIcons\.profileSelected : tabIcons\.profile/);
+});
+
 test('profile supports add, message, accept and reject relationship actions', () => {
     const profile = read('pages/im/user-profile.nvue');
     assert.match(profile, /添加好友/);

@@ -14,6 +14,8 @@ public_api.updateApp = params => url.request('/uniapp_template/web/index.php?m=u
 public_api.userUpdateApp = params => url.request('/uniapp_template/web/index.php?m=uniapp_index&a=user_update_app', params, 'POST')
 //修改用户信息
 public_api.editProfile = params => url.request('/uniapp_template/web/index.php?m=app_user&a=editProfile', params, 'POST',true,true)
+public_api.imProfileInfo = params => url.request('/xingyun_chat/api/index.php?m=im&a=profile_info', params, 'POST', true)
+public_api.imProfileSave = params => url.request('/xingyun_chat/api/index.php?m=im&a=profile_save', params, 'POST', true)
 //获取客服联系电话
 public_api.getPhoneCall = params => url.request('/uniapp_template/web/index.php?m=uni_index&a=get_uniapp_contact&xdebug=xdebug', params, 'POST')
 //保存投诉信息

@@ -5,6 +5,16 @@
 		<block v-for="(item,index) in module_list">
 		    <basePersonal :datas="item" :indexs="index" ref="basePersonal" ></basePersonal>
 			<tradePersonal :datas="item" :indexs="index" v-if="userInfo.user_id>0" ></tradePersonal>
+			<!-- #ifdef APP-PLUS -->
+			<view v-if="index === 0 && Number(vuex_user.user_id) > 0" class="im-profile-entry" @tap="openIMProfile">
+				<image class="im-profile-avatar" :src="vuex_user.headimgurl || '/static/images/default-head.png'" mode="aspectFill"></image>
+				<view class="im-profile-content">
+					<text class="im-profile-name">{{ vuex_user.weixin_name || vuex_user.name || '我的资料' }}</text>
+					<text class="im-profile-hint">编辑 IM 个人资料</text>
+				</view>
+				<text class="im-profile-arrow">›</text>
+			</view>
+			<!-- #endif -->
 		</block>
 		<pagecom :datas="template_data"></pagecom>
 		<!-- #ifdef APP-PLUS -->
@@ -45,6 +55,7 @@
 			this.getSafeEmailStatus();
 		},
 		onPageScroll(e) {
+			if (!this.module_list || !this.module_list.length || !this.$refs.basePersonal || !this.$refs.basePersonal[0]) return;
 			// 重点，用到滑动切换必须加上
 			// console.log(this.$refs.basePersonal) 
 			if(this.module_list[0].type=='base20'){
@@ -54,6 +65,9 @@
 			}
 		},
 		methods: {
+			openIMProfile() {
+				uni.navigateTo({ url: '/pages/im/edit-profile' });
+			},
 			templateCombinationSelect(){
 				var _this = this;
 				var module_personal_center = "";
@@ -157,5 +171,10 @@
 </script>
 
 <style>
-
+.im-profile-entry { display: flex; align-items: center; margin: 24rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; }
+.im-profile-avatar { width: 96rpx; height: 96rpx; border-radius: 48rpx; }
+.im-profile-content { display: flex; flex: 1; flex-direction: column; margin-left: 20rpx; }
+.im-profile-name { font-size: 32rpx; color: #17212f; font-weight: 600; }
+.im-profile-hint { margin-top: 8rpx; font-size: 24rpx; color: #8992a3; }
+.im-profile-arrow { font-size: 44rpx; color: #b1b7c2; }
 </style>

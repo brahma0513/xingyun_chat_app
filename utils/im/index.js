@@ -10,6 +10,7 @@ import { useLoginState } from '@/uni_modules/tuikit-atomic-x/state/LoginState';
 import { addListener, removeListener, callAPI } from '@/uni_modules/tuikit-atomic-x/utils/tuikitBridge';
 // #endif
 import Store from '@/store';
+import publicAPI from '@/public/api.js';
 import { apiUrl, customer_id, api_key, app_id, appExamine } from '@/utils/config.js';
 import { createIMSession } from './session.js';
 
@@ -85,7 +86,13 @@ const readState = createReadState({
     report: error => console.warn('[IM] 清除当前会话未读失败，下次显示或收到消息时重试', error && error.code)
 });
 function broadcastStatus() {
-    uni.$emit('im:status', { ...Store.state.vuex_im, foreground: imForeground });
+    const user = Store.state.vuex_user || {};
+    const profile = user.token ? businessProfile(user, apiUrl) : null;
+    uni.$emit('im:status', {
+        ...Store.state.vuex_im,
+        foreground: imForeground,
+        selfProfile: profile ? { userID: profile.userID, nickname: profile.nickname, avatarURL: profile.avatarURL } : null
+    });
 }
 // #ifdef APP-PLUS
 unreadMonitor = createUnreadMonitor({ callAPI, addListener, removeListener,
@@ -111,6 +118,33 @@ function syncExtras() {
     if (!client) return;
     if (unreadMonitor) unreadMonitor.start(client);
     syncProfile();
+    loadProfileMetadata();
+}
+let metadataLoadedClient = null;
+function loadProfileMetadata() {
+    const client = session.getClient();
+    const account = currentAccount();
+    if (!client || !account || Store.state.vuex_im.status !== 'ready' || Store.state.vuex_im.userID !== 'user_' + account.userID) return;
+    if (metadataLoadedClient === client) return;
+    metadataLoadedClient = client;
+    const userAtRequest = Store.state.vuex_user;
+    publicAPI.imProfileInfo({}).then(res => {
+        if (session.getClient() !== client || Store.state.vuex_user !== userAtRequest || Number(Store.state.vuex_user.user_id) !== Number(account.userID)) {
+            if (metadataLoadedClient === client) metadataLoadedClient = null;
+            return;
+        }
+        if (!res || Number(res.errcode) !== 0 || !res.data) throw new Error('资料接口不可用');
+        Store.commit('$uStore', { name: 'vuex_user', value: {
+            ...userAtRequest,
+            im_birthday: res.data.birthday || '',
+            im_region: res.data.region || '',
+            im_signature: res.data.signature || '',
+            imProfileLoaded: true
+        } });
+    }).catch(error => {
+        if (metadataLoadedClient === client) metadataLoadedClient = null;
+        console.warn('[IM] 扩展资料获取失败', error && error.message);
+    });
 }
 const session = createIMSession({
     sdk: nativeSDK,
@@ -212,7 +246,16 @@ export function startIMLogin() {
     });
     // 同步监听身份变化；即使短时间退出后又登录同一用户，也清理旧的异步任务。
     Store.watch(() => JSON.stringify(currentAccount()), () => syncAccountWithoutInterruptingCall(), { immediate: true, sync: true });
-    Store.watch(() => JSON.stringify(businessProfile(Store.state.vuex_user, apiUrl)), () => syncProfile());
+    Store.watch(() => JSON.stringify({
+        hasToken: !!(Store.state.vuex_user && Store.state.vuex_user.token),
+        profile: businessProfile(Store.state.vuex_user, apiUrl)
+    }), () => {
+        syncProfile();
+        broadcastStatus();
+    });
+    Store.watch(() => !!(Store.state.vuex_user && Store.state.vuex_user.imProfileLoaded), loaded => {
+        if (!loaded) { metadataLoadedClient = null; loadProfileMetadata(); }
+    });
     uni.onNetworkStatusChange((event) => { if (event.isConnected) syncIMLogin().then(() => {
         if (unreadMonitor) unreadMonitor.refresh();
         uni.$emit('im:read-retry');

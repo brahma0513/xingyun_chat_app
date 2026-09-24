@@ -10,7 +10,11 @@ export function businessProfile(user, baseURL = '') {
     avatarURL = avatarURL.replace(/ /g, '%20');
     if (!/^https?:\/\/[^\s]+$/i.test(avatarURL)) avatarURL = '';
     // 所有 App 用户默认必须通过好友验证，避免 addFriend 直接建立关系。
-    return { userID, nickname, avatarURL, allowType: 1 };
+    const profile = { userID, nickname, avatarURL, allowType: 1, gender: Number(user.sex) === 2 ? 2 : Number(user.sex) === 1 ? 1 : 0 };
+    if (user.imProfileLoaded) {
+        profile.selfSignature = String(user.im_signature || '').slice(0, 100);
+    }
+    return profile;
 }
 
 // Deduplicate per native client, keep failure retryable, never apply a stale result to a new account.

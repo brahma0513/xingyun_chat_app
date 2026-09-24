@@ -31,7 +31,7 @@
                     <view v-if="isFriend" class="primary-button" @tap="sendMessage"><text class="primary-text">发消息</text></view>
                     <view v-else-if="!sentApplication" class="primary-button" @tap="addFriend"><text class="primary-text">添加好友</text></view>
                 </view>
-                <view v-if="isSelf" class="waiting"><text class="waiting-text">这是你自己的主页</text></view>
+                <view v-if="isSelf" class="actions" @tap="editSelf"><view class="primary-button"><text class="primary-text">编辑个人资料</text></view></view>
             </view>
         </scroll-view>
     </view>
@@ -65,6 +65,7 @@ export default {
     onShow() { if (this.userID && !this.loading) this.load(); },
     methods: {
         goBack() { uni.navigateBack(); },
+        editSelf() { uni.navigateTo({ url: '/pages/im/edit-profile' }); },
         load() {
             const userID = this.userID;
             this.loading = !this.userInfo; this.error = '';

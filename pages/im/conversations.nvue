@@ -1,11 +1,33 @@
 <template>
     <view class="page">
         <CustomNavbar :title="pageTitle" :showBack="true" :showMenu="false" @back="goBack" />
-        <view class="search-row">
+        <view v-if="activeTab !== 'profile'" class="search-row">
             <image class="search-icon" src="/uni_modules/tuikit-atomic-x/static/icon/search.png" />
             <input class="search-input" v-model="searchText" :placeholder="activeTab === 'messages' ? '搜索联系人、最近消息' : '搜索姓名、用户 ID'" placeholder-color="#8992a3" />
         </view>
-        <view v-if="imReady" ref="tabContent" class="tab-content">
+        <view v-if="activeTab === 'profile'" class="tab-content profile-content">
+            <scroll-view scroll-y="true" class="profile-scroll">
+                <view v-if="isBusinessLoggedIn" class="profile-body">
+                    <view class="profile-card" @tap="openEditProfile">
+                        <image class="profile-avatar" :src="profileAvatar" mode="aspectFill" />
+                        <view class="profile-details">
+                            <text class="profile-name" :numberOfLines="1">{{ profileName }}</text>
+                            <text class="profile-id">{{ profileUserID }}</text>
+                        </view>
+                        <text class="profile-arrow">›</text>
+                    </view>
+                    <view class="profile-action" @tap="openEditProfile">
+                        <text class="profile-action-label">编辑个人资料</text>
+                        <text class="profile-arrow">›</text>
+                    </view>
+                </view>
+                <view v-else class="profile-empty" @tap="openProfileLogin">
+                    <text class="profile-empty-text">登录后查看和编辑个人资料</text>
+                    <text class="profile-login">去登录</text>
+                </view>
+            </scroll-view>
+        </view>
+        <view v-else-if="imReady" ref="tabContent" class="tab-content">
             <ConversationList v-if="activeTab === 'messages'" :key="'messages-' + imStatus.sessionID" :Preview="ListPreview" :filter="singleOnly"
                 :actionsConfig="conversationActions" @conversationSelect="openChat" />
             <ContactsList v-else :key="'contacts-' + imStatus.sessionID" :search="searchText" :selfID="imStatus.userID"
@@ -15,24 +37,24 @@
             <text class="hint">{{ imStatusText }}</text>
             <text v-if="listStatusActionable" class="action">点击重试 / 登录</text>
         </view>
-        <view v-if="!imReady && !showListStatus" class="pending-space" />
+        <view v-if="activeTab !== 'profile' && !imReady && !showListStatus" class="pending-space" />
         <view class="tab-bar" :style="{ paddingBottom: (bottomInset + 20) + 'px' }">
             <view class="tab-shell">
                 <view ref="tabIndicator" class="tab-indicator" />
                 <view class="tab" @tap="selectTab('messages')">
-                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.message" @error="onTabIconError('message')" />
+                    <image class="tab-icon" mode="aspectFit" :src="navActive === 'messages' ? tabIcons.messageSelected : tabIcons.message" @error="onTabIconError('message')" />
                     <text class="tab-label" :class="{ 'tab-active': navActive === 'messages' }">消息</text>
                 </view>
                 <view class="tab" @tap="selectTab('contacts')">
-                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.contact" @error="onTabIconError('contact')" />
+                    <image class="tab-icon" mode="aspectFit" :src="navActive === 'contacts' ? tabIcons.contactsSelected : tabIcons.contacts" @error="onTabIconError('contacts')" />
                     <text class="tab-label" :class="{ 'tab-active': navActive === 'contacts' }">通讯录</text>
                 </view>
                 <view class="tab" @tap="selectTab('add')">
-                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.add" @error="onTabIconError('add')" />
+                    <image class="tab-icon" mode="aspectFit" :src="navActive === 'add' ? tabIcons.addSelected : tabIcons.add" @error="onTabIconError('add')" />
                     <text class="tab-label" :class="{ 'tab-active': navActive === 'add' }">添加</text>
                 </view>
                 <view class="tab" @tap="selectTab('profile')">
-                    <image class="tab-icon" mode="aspectFit" :src="tabIcons.profile" @error="onTabIconError('profile')" />
+                    <image class="tab-icon" mode="aspectFit" :src="navActive === 'profile' ? tabIcons.profileSelected : tabIcons.profile" @error="onTabIconError('profile')" />
                     <text class="tab-label" :class="{ 'tab-active': navActive === 'profile' }">我的</text>
                 </view>
             </view>
@@ -54,15 +76,23 @@ export default {
         return { searchText: '', activeTab: 'messages', navActive: 'messages', navTimer: null, ListPreview, bottomInset: info.safeAreaInsets ? info.safeAreaInsets.bottom : 0,
             conversationActions: { isSupportPin: true, isSupportMute: false, isSupportDelete: true },
             tabIcons: {
-                message: require('@/static/im/message.png'),
-                contact: require('@/static/im/relation.png'),
-                add: require('@/uni_modules/tuikit-atomic-x/quickstart/static/tuikit/add-friend.png'),
-                profile: require('@/uni_modules/tuikit-atomic-x/quickstart/static/tuikit/profile.png')
+                message: require('@/static/im/tabs/message.png'),
+                messageSelected: require('@/static/im/tabs/message-selected.png'),
+                contacts: require('@/static/im/tabs/contacts.png'),
+                contactsSelected: require('@/static/im/tabs/contacts-selected.png'),
+                add: require('@/static/im/tabs/add.png'),
+                addSelected: require('@/static/im/tabs/add-selected.png'),
+                profile: require('@/static/im/tabs/profile.png'),
+                profileSelected: require('@/static/im/tabs/profile-selected.png')
             }
         };
     },
     computed: {
-        pageTitle() { return this.activeTab === 'contacts' ? '通讯录' : '消息'; },
+        pageTitle() { return this.activeTab === 'contacts' ? '通讯录' : this.activeTab === 'profile' ? '我的' : '消息'; },
+        isBusinessLoggedIn() { return !!(this.imStatus.selfProfile && this.imStatus.selfProfile.userID); },
+        profileName() { return (this.imStatus.selfProfile && this.imStatus.selfProfile.nickname) || '未设置昵称'; },
+        profileAvatar() { return (this.imStatus.selfProfile && this.imStatus.selfProfile.avatarURL) || '/static/images/default-head.png'; },
+        profileUserID() { return this.isBusinessLoggedIn ? '用户 ID：' + this.imStatus.selfProfile.userID : ''; },
         showListStatus() {
             return this.pageVisible && !this.waitingForStatus && this.imStatus.foreground !== false &&
                 ['connecting', 'idle', 'kicked', 'error'].includes(this.imStatus.status);
@@ -85,14 +115,13 @@ export default {
         },
         onTabIconError(name) { console.warn('[IM] tab icon failed', name, this.tabIcons); },
         selectTab(tab) {
-            if (tab === 'add' || tab === 'profile') {
+            if (tab === 'add') {
                 this.navActive = tab;
                 this.$nextTick(() => this.animateTabIndicator(tab));
                 if (this.navTimer != null) clearTimeout(this.navTimer);
                 this.navTimer = setTimeout(() => {
                     this.navTimer = null;
-                    const url = tab === 'add' ? '/pages/im/add-friend' : '/pages/personal_center/personal_center';
-                    uni.navigateTo({ url, fail: () => {
+                    uni.navigateTo({ url: '/pages/im/add-friend', fail: () => {
                         this.navActive = this.activeTab;
                         this.$nextTick(() => this.animateTabIndicator(this.activeTab));
                     } });
@@ -115,6 +144,7 @@ export default {
             this.searchText = '';
             this.$nextTick(() => {
                 this.animateTabIndicator(tab);
+                if (tab === 'profile') return;
                 const element = this.$refs.tabContent;
                 if (!element || !this.imReady || this.activeTab !== tab) return;
                 const animation = uni.requireNativePlugin('animation');
@@ -144,6 +174,8 @@ export default {
             uni.navigateTo({ url: '/pages/im/user-profile?userID=' + encodeURIComponent(person.userID) });
         },
         openAddFriend() { uni.navigateTo({ url: '/pages/im/add-friend' }); },
+        openEditProfile() { uni.navigateTo({ url: '/pages/im/edit-profile' }); },
+        openProfileLogin() { uni.navigateTo({ url: '/public/pages/user/login' }); },
         openFriendApplications() { uni.navigateTo({ url: '/pages/im/friend-applications' }); },
         handleListStatusTap() { if (this.listStatusActionable) this.retryChat(); },
         onIMStatusChange(value) { if (value.accountSessionID !== this.imStatus.accountSessionID) this.searchText = ''; },
@@ -167,16 +199,30 @@ export default {
 .pending-space { flex: 1; }
 .tab-content { flex: 1; opacity: 1; }
 .tab-bar { align-items: center; justify-content: center; padding-top: 12px; padding-left: 24px; padding-right: 24px; background-color: #ffffff; }
-.tab-shell { position: relative; width: 336px; height: 64px; padding: 0; flex-direction: row; border-width: 1px; border-color: #e5e5e8; border-radius: 32px; background-color: #ffffff; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12); }
-.tab-indicator { position: absolute; left: 4px; top: 4px; width: 76px; height: 56px; z-index: 1; border-radius: 28px; background-color: #eeeeF2; }
+.tab-shell { position: relative; width: 336px; height: 64px; padding: 0; flex-direction: row; border-width: 1px; border-color: #e5eaf1; border-radius: 32px; background-color: #ffffff; box-shadow: 0 5px 16px rgba(25, 51, 91, 0.10); }
+.tab-indicator { position: absolute; left: 4px; top: 4px; width: 76px; height: 56px; z-index: 1; border-radius: 28px; background-color: #eaf2ff; }
 .tab { width: 84px; height: 64px; z-index: 2; flex-direction: column; align-items: center; justify-content: center; }
-.tab-icon { width: 21px; height: 21px; flex-shrink: 0; margin-right: 0; margin-bottom: 3px; }
-.tab-label { font-size: 10px; color: #77777f; }
-.tab-active { color: #111111; font-weight: 700; }
+.tab-icon { width: 24px; height: 24px; margin-right: 0; margin-bottom: 3px; }
+.tab-label { font-size: 10px; color: #748299; }
+.tab-active { color: #2563eb; font-weight: 700; }
 .search-row { flex-direction: row; align-items: center; margin: 12px 12px 10px; padding: 0 16px; height: 44px; border-radius: 6px; background-color: #f4f5f8; }
 .search-icon { width: 20px; height: 20px; margin-right: 12px; }
 .search-input { flex: 1; height: 44px; font-size: 14px; color: #101b2b; }
 .status { flex: 1; align-items: center; justify-content: center; padding: 24px; }
 .hint { color: #666666; font-size: 15px; text-align: center; }
 .action { color: #2878ff; margin-top: 18px; font-size: 15px; }
+.profile-content { background-color: #f5f6f8; }
+.profile-scroll { flex: 1; }
+.profile-body { padding: 20px 16px; }
+.profile-card { flex-direction: row; align-items: center; padding: 20px 16px; border-radius: 16px; background-color: #ffffff; }
+.profile-avatar { width: 72px; height: 72px; border-radius: 36px; background-color: #e9edf2; }
+.profile-details { flex: 1; margin-left: 16px; }
+.profile-name { color: #17212f; font-size: 20px; font-weight: 600; lines: 1; text-overflow: ellipsis; }
+.profile-id { margin-top: 8px; color: #8992a3; font-size: 12px; }
+.profile-arrow { color: #9aa2af; font-size: 24px; }
+.profile-action { flex-direction: row; align-items: center; margin-top: 16px; padding: 18px 16px; border-radius: 12px; background-color: #ffffff; }
+.profile-action-label { flex: 1; color: #17212f; font-size: 15px; }
+.profile-empty { flex: 1; align-items: center; justify-content: center; padding: 24px; }
+.profile-empty-text { color: #8992a3; font-size: 14px; }
+.profile-login { margin-top: 16px; color: #2878ff; font-size: 15px; }
 </style>

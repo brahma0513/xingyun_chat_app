@@ -7,10 +7,21 @@ const { unreadCount, createUnreadMonitor } = await load('../utils/im/unread.js')
 
 test('profile only exports public identity fields and normalizes avatar URLs', () => {
     assert.deepEqual(businessProfile({ user_id: 12, weixin_name: ' 小明 ', headimgurl: '/uploads/a.jpg', token: 'private' }, 'https://example.com/api'),
-        { userID: 'user_12', nickname: '小明', avatarURL: 'https://example.com/uploads/a.jpg', allowType: 1 });
+        { userID: 'user_12', nickname: '小明', avatarURL: 'https://example.com/uploads/a.jpg', allowType: 1, gender: 0 });
     assert.equal(businessProfile({ user_id: 12, headimgurl: '/static/default.png' }).avatarURL, '');
     assert.equal(businessProfile({ user_id: 12, headimgurl: 'file:///private/a.jpg' }).avatarURL, '');
     assert.equal(businessProfile({ user_id: 0 }), null);
+});
+test('extended profile stays account scoped and publishes only the signature', () => {
+    const basic = businessProfile({ user_id: 12, sex: 2, im_signature: '未加载' });
+    assert.equal(basic.gender, 2);
+    assert.equal(basic.selfSignature, undefined);
+    const loaded = businessProfile({ user_id: 12, sex: 2, imProfileLoaded: true,
+        im_signature: '你好', im_birthday: '2001-02-03', im_region: '上海', token: 'secret' });
+    assert.equal(loaded.selfSignature, '你好');
+    assert.equal(loaded.birthday, undefined);
+    assert.equal(loaded.im_region, undefined);
+    assert.equal(loaded.token, undefined);
 });
 test('profile synchronization deduplicates, retries failures and syncs changed profiles', async () => {
     let calls = 0, fail = true, profile = { userID: 'user_12', nickname: 'A' };

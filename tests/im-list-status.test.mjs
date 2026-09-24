@@ -45,3 +45,14 @@ test('confirmed failure/login prompts remain visible and actionable', () => {
         component.methods.handleListStatusTap.call(page); assert.equal(page.retries, 1);
     }
 });
+test('profile tab uses the sanitized status identity from the app service', () => {
+    const page = fixture('ready');
+    page.imStatus.selfProfile = { userID: 'user_12', nickname: '小明', avatarURL: 'https://example.com/a.png' };
+    assert.equal(page.isBusinessLoggedIn, true);
+    assert.equal(page.profileName, '小明');
+    assert.equal(page.profileUserID, '用户 ID：user_12');
+    assert.equal(page.profileAvatar, 'https://example.com/a.png');
+    assert.doesNotMatch(file, /this\.vuex_user/);
+    page.imStatus.selfProfile = null;
+    assert.equal(page.isBusinessLoggedIn, false);
+});

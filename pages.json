@@ -38,6 +38,10 @@
       "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
     },
     {
+      "path": "pages/im/edit-profile",
+      "style": { "navigationBarTitleText": "编辑个人资料" }
+    },
+    {
       "path": "pages/im/friend-verify",
       "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustResize" } }
     },
