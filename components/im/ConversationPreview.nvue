@@ -16,10 +16,13 @@
 </template>
 <script>
 import BasePreview from '@/uni_modules/tuikit-atomic-x/components/ConversationList/ConversationPreview.nvue';
+import { parseRedPacket, REDPACKET_ASSETS } from '@/utils/im/redpacket.js';
 export default {
     extends: BasePreview,
     computed: {
         previewText() {
+            const packet = parseRedPacket(this.conversation.lastMessage);
+            if (packet && !this.conversation.draft) return '[红包] ' + REDPACKET_ASSETS[packet.asset];
             const prefix = this.conversation.draft ? '[草稿] ' : (this.isMuted && this.unreadCount > 0 ? '[' + this.unreadCount + '条] ' : '');
             return prefix + this.messageSegments.map(segment => segment.type === 'text' ? segment.content : '[表情]').join('');
         }

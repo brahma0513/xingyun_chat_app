@@ -1,0 +1,27 @@
+<template>
+    <view class="packet">
+        <view class="body"><view class="symbol"><text class="symbol-text">福</text></view><view class="words"><text class="blessing">{{ packet ? packet.blessing : '红包' }}</text><text class="hint">{{ statusText }}</text></view></view>
+        <view class="footer"><text class="label">{{ packet ? assetNames[packet.asset] : '' }}红包</text></view>
+    </view>
+</template>
+<script>
+import { parseRedPacket, REDPACKET_ASSETS } from '@/utils/im/redpacket.js';
+export default {
+    props: { message: { type: Object, required: true }, conversationID: { type: String, default: '' } },
+    data() { return { statusText: '点击查看红包', assetNames: REDPACKET_ASSETS }; },
+    computed: { packet() { return parseRedPacket(this.message); } },
+    mounted() {
+        this._updatePacket = value => { if (this.packet && value.packet_id === this.packet.packet_id) this.statusText = value.status_text; };
+        uni.$on('im:redpacket-updated', this._updatePacket);
+    },
+    beforeDestroy() { uni.$off('im:redpacket-updated', this._updatePacket); }
+};
+</script>
+<style>
+.packet { width: 240px; border-radius: 10px; background-color: #e85b3c; overflow: hidden; }
+.body { flex-direction: row; align-items: center; padding: 18px 14px; }
+.symbol { width: 38px; height: 44px; border-radius: 5px; background-color: #fbd38e; align-items: center; justify-content: center; margin-right: 12px; }
+.symbol-text { font-size: 23px; color: #bc412d; }
+.words { flex: 1; }.blessing { color: #fff8e5; font-size: 15px; lines: 2; }.hint { margin-top: 7px; color: #ffe0c6; font-size: 12px; }
+.footer { background-color: #fff9ef; padding: 8px 12px; }.label { font-size: 11px; color: #9a6b48; }
+</style>

@@ -93,7 +93,7 @@ test('voice retry checks local files, rejects duplicate clicks and ignores stale
     const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
     for (const scenario of ['success', 'missing', 'session']) {
         let success, failure, reads = 0; const sent = [], notices = [];
-        const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, chatURL() {},
+        const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, RedPacketPanel: {}, chatURL() {},
             createImageSender: () => ({}), plus: { io: { resolveLocalFileSystemURL(path, ok, fail) { reads++; success = ok; failure = fail; } } },
             uni: { getSystemInfoSync: () => ({ screenHeight: 800 }), $emit() {}, $on() {}, showToast: value => notices.push(value) } };
         vm.runInNewContext(script, context);

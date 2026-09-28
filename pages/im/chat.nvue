@@ -4,6 +4,7 @@
         <view v-if="!routeError && imReady && conversationID" :key="imStatus.sessionID" class="chat-body">
             <view :style="{ height: messageHeight + 'px' }" @tap="collapse">
                 <MessageList :key="imStatus.userID + conversationID" :conversationID="conversationID"
+                    :customMessageRender="renderRedPacket" @onMessageTap="openRedPacket"
                     :onReadRequest="requestRead"
                     :inputToolbarHeight="inputToolbarHeight" :inputPanelHeight="inputPanelHeight" @onMessageListTap="collapse" />
             </view>
@@ -12,6 +13,7 @@
                 :enableTools="true" :enableEmoji="true" :toolList="chatTools" @heightChange="resizeInput" />
         </view>
         <view v-else class="status" @tap="handleChatStatusTap"><text v-if="chatStatusText" class="hint">{{ chatStatusText }}</text></view>
+        <RedPacketPanel v-if="redPacketVisible && imReady" :key="redPacketKey" :context="redPacketContext" :receiverID="redPacketReceiver" :receiverName="title" :packetID="redPacketID" :canOperate="canUseRedPacket" @close="closeRedPacket" />
     </view>
 </template>
 <script>
@@ -22,13 +24,17 @@ import status from '@/utils/im/page-status.js';
 import { chatURL } from '@/utils/im/routes.js';
 import profileView from '@/utils/im/profile-view.js';
 import { createImageSender } from '@/utils/im/image-send.js';
+import RedPacketCard from '@/components/im/RedPacketCard.nvue';
+import RedPacketPanel from '@/components/im/RedPacketPanel.nvue';
+import { parseRedPacket } from '@/utils/im/redpacket.js';
 export default {
     mixins: [status, profileView],
-    components: { CustomNavbar, MessageList, MessageInput },
+    components: { CustomNavbar, MessageList, MessageInput, RedPacketPanel },
     data() {
         const system = uni.getSystemInfoSync();
         return { conversationID: '', routeError: '', ownerAccountSession: null, ownerIMIdentity: '', pageID: 'chat-' + Date.now() + '-' + Math.random(), inputToolbarHeight: 60, inputPanelHeight: 0,
-            screenHeight: system.screenHeight || system.windowHeight, title: '聊天', showConnectionHint: false };
+            screenHeight: system.screenHeight || system.windowHeight, title: '聊天', showConnectionHint: false,
+            redPacketVisible: false, redPacketID: '', redPacketKey: 0, redPacketContext: {} };
     },
     computed: {
         connectionHintPending() { return this.pageVisible && !this.routeError && !this.imReady && !['idle', 'kicked', 'error'].includes(this.imStatus.status); },
@@ -38,10 +44,12 @@ export default {
             return this.showConnectionHint ? this.imStatusText : '';
         },
         chatTools() { return [
+            { id: 'redPacket', name: '红包', icon: '/static/im/redpacket.png', callback: this.composeRedPacket },
             { id: 'image', name: '照片', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/nvue_image.png', callback: this.chooseChatImages },
             { id: 'voiceCall', name: '语音通话', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/voice.png' },
             { id: 'videoCall', name: '视频通话', icon: '/uni_modules/tuikit-atomic-x/static/assets/message-input/video.png' }
         ]; },
+        redPacketReceiver() { return this.conversationID.replace(/^c2c_user_/, ''); },
         readContext() { return { pageID: this.pageID, sessionID: this.imStatus.sessionID, conversationID: this.conversationID }; },
         readKey() { return JSON.stringify([this.imReady, this.imStatus.sessionID, this.conversationID]); },
         profileIDs() { return this.imReady && this.conversationID ? [this.conversationID.replace(/^c2c_/, '')] : []; },
@@ -56,7 +64,7 @@ export default {
                 if (this.connectionHintPending) this.showConnectionHint = true;
             }, 500);
         } },
-        readKey() { this.showReadPage(); this.$nextTick(() => { if (this._imageSender) this._imageSender.resume(); }); },
+        readKey() { if (!this.imReady) this.closeRedPacket(); this.showReadPage(); this.$nextTick(() => { if (this._imageSender) this._imageSender.resume(); }); },
         currentProfiles(value) {
             const profile = value[this.conversationID.replace(/^c2c_/, '')];
             if (profile && (profile.friendRemark || profile.nickname)) this.title = profile.friendRemark || profile.nickname;
@@ -113,9 +121,20 @@ export default {
             this.onIMStatusChange(this.imStatus);
         } catch (error) { this.routeError = error.message; }
     },
-    onHide() { this.stopVoiceRecording(); this.clearConnectionHint(); this.hideReadPage(); },
+    onHide() { this.closeRedPacket(); this.stopVoiceRecording(); this.clearConnectionHint(); this.hideReadPage(); },
     onUnload() { this.stopVoiceRecording(); this.clearConnectionHint(); if (this._imageSender) this._imageSender.dispose(); this.hideReadPage(); uni.$off('im:read-retry', this._readRetry); uni.$off('im:retry-image', this._retryImage); uni.$off('im:retry-voice', this._retryVoice); },
     methods: {
+        renderRedPacket(message) { return parseRedPacket(message) ? RedPacketCard : null; },
+        canUseRedPacket(context) { return this.imReady && !this.routeError && this.imStatus.userID === context.userID && this.imStatus.accountSessionID === context.accountSessionID && this.conversationID === context.conversationID; },
+        composeRedPacket() { this.showRedPacket(''); },
+        openRedPacket(message) { const packet = parseRedPacket(message); if (packet) this.showRedPacket(packet.packet_id); },
+        showRedPacket(id) {
+            if (!this.imReady || !/^c2c_user_[1-9]\d*$/.test(this.conversationID)) return;
+            this.stopVoiceRecording(); this.collapse();
+            this.redPacketContext = { userID: this.imStatus.userID, accountSessionID: this.imStatus.accountSessionID, conversationID: this.conversationID };
+            this.redPacketID = id; this.redPacketKey++; this.redPacketVisible = true;
+        },
+        closeRedPacket() { this.redPacketVisible = false; },
         canUseVoice(sessionID) { return this.imReady && !this.routeError && this.imStatus.sessionID === sessionID; },
         stopVoiceRecording() { if (this.$refs && this.$refs.input && this.$refs.input.cancelVoiceRecording) this.$refs.input.cancelVoiceRecording(); },
         clearConnectionHint() {
@@ -132,6 +151,7 @@ export default {
             // Only a business logout/switch or changed IM identity invalidates the route.
             if ((this.ownerAccountSession !== null && value.accountSessionID !== this.ownerAccountSession) ||
                 (imIdentity && this.ownerIMIdentity && imIdentity !== this.ownerIMIdentity)) {
+                this.closeRedPacket();
                 this.hideReadPage();
                 this.conversationID = ''; this.title = '聊天'; this.currentProfiles = {};
                 this.routeError = '登录状态已变化，请返回消息列表重新进入';

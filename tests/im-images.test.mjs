@@ -68,7 +68,7 @@ test('chat wires an album-only picker and releases pending work on unload', asyn
     const file = fs.readFileSync(new URL('../pages/im/chat.nvue', import.meta.url), 'utf8');
     const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
     const listeners = new Map(), sent = []; let picker;
-    const context = { module: { exports: {} }, createImageSender, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, chatURL() {},
+    const context = { module: { exports: {} }, createImageSender, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, RedPacketPanel: {}, chatURL() {},
         uni: { getSystemInfoSync: () => ({ screenHeight: 800 }), $emit() {}, $on: (key, fn) => listeners.set(key, fn), $off: key => listeners.delete(key),
             chooseImage: options => { picker = options; }, getImageInfo: options => options.success({ path: options.src, width: 10, height: 20 }), showToast() {} } };
     vm.runInNewContext(script, context);

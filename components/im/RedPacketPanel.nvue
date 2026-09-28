@@ -1,0 +1,82 @@
+<template>
+    <view class="mask" @tap.stop=""><view class="panel">
+        <view class="heading"><text class="title">{{ packet ? '红包详情' : '发红包' }}</text><text class="close" @tap="close">关闭</text></view>
+        <text v-if="error" class="error">{{ error }}</text>
+        <view v-if="packet">
+            <text class="blessing">{{ packet.blessing }}</text><text class="amount">{{ packet.amount || '待领取' }} {{ packet.asset_name }}</text>
+            <text class="tip">{{ packet.status_text }}</text>
+            <text v-if="packet.status.indexOf('review') >= 0" class="tip">平台正在核对交易流水，请勿重新支付；长时间未恢复请联系管理员</text>
+            <text v-if="packet.status === 'pending' && !Number(packet.message_sent)" class="tip">红包已扣款，消息发送中，请勿重新支付</text>
+            <view v-if="packet.can_claim" class="primary" @tap="claim"><text class="button-text">{{ busy ? '领取中…' : '领取红包' }}</text></view>
+            <view class="secondary" @tap="refresh"><text class="secondary-text">刷新状态</text></view>
+        </view>
+        <view v-else-if="draft">
+            <text class="tip">发给 {{ receiverName }} · 单个红包</text>
+            <view class="assets"><view v-for="item in assets" :key="item.asset" class="asset" :class="{ selected: draft.asset === item.asset }" @tap="selectAsset(item)"><text class="asset-text">{{ item.name }}</text></view></view>
+            <text class="tip">可用余额：{{ balance }}</text>
+            <input class="input" :disabled="busy || locked" v-model="draft.amount" type="digit" :placeholder="draft.asset === 'integral' ? '请输入积分数量（整数）' : '请输入红包金额'" />
+            <input class="input" :disabled="busy || locked" v-model="draft.blessing" maxlength="60" placeholder="恭喜发财，大吉大利" />
+            <input v-if="!locked" class="input" :disabled="busy" v-model="password" :password="true" maxlength="6" placeholder="请输入支付密码" />
+            <text class="tip">24 小时未领取，将退回原资产账户</text>
+            <view v-if="hasPassword && !locked" class="primary" @tap="send"><text class="button-text">{{ busy ? '支付处理中…' : '确认支付并发送' }}</text></view>
+            <view v-if="locked" class="primary" @tap="retry"><text class="button-text">{{ busy ? '核对中…' : '核对上一个红包' }}</text></view>
+            <view v-if="!hasPassword" class="secondary" @tap="setPassword"><text class="secondary-text">设置支付密码</text></view>
+        </view>
+        <text v-else class="tip">{{ busy ? '加载中…' : '请关闭后重新打开' }}</text>
+    </view></view>
+</template>
+<script>
+import { requestRedPacket, validateRedPacketAmount } from '@/utils/im/redpacket.js';
+export default {
+    props: { context: { type: Object, required: true }, receiverID: { type: String, required: true }, receiverName: { type: String, default: '对方' }, packetID: { type: String, default: '' }, canOperate: { type: Function, required: true } },
+    data() { return { assets: [], draft: null, packet: null, password: '', hasPassword: false, locked: false, busy: false, error: '', errorCode: 0, disposed: false }; },
+    computed: { balance() { const asset = this.assets.find(item => this.draft && item.asset === this.draft.asset); return asset ? asset.balance : '--'; } },
+    mounted() { this.load(); },
+    beforeDestroy() { this.disposed = true; this.password = ''; },
+    methods: {
+        async run(action, data) {
+            if (this.busy || !this.canOperate(this.context)) return null;
+            this.busy = true; this.error = ''; this.errorCode = 0;
+            try { const result = await requestRedPacket(action, { ...data, receiver_id: this.receiverID }, this.context); return !this.disposed && this.canOperate(this.context) ? result : null; }
+            catch (error) { if (!this.disposed && this.canOperate(this.context)) { this.error = error.message; this.errorCode = Number(error.code || 0); } return null; }
+            finally { this.busy = false; this.password = ''; }
+        },
+        async load() {
+            if (this.packetID) { this.packet = await this.run('detail', { packet_id: this.packetID }); return; }
+            const result = await this.run('options', { receiver_id: this.receiverID });
+            if (result) { this.assets = result.assets; this.hasPassword = !!result.has_pay_password; this.draft = result.draft; this.locked = !!this.draft.amount; if (this.draft.packet_id) { this.packet = await this.run('detail', { packet_id: this.draft.packet_id }); } }
+        },
+        selectAsset(item) { if (!this.busy && !this.locked) { this.draft.asset = item.asset; this.draft.amount = ''; } },
+        async send() {
+            if (this.busy || this.locked || !this.draft) return;
+            this.error = validateRedPacketAmount(this.draft.amount, this.draft.asset);
+            if (!this.error && this.password.length !== 6) this.error = '请输入 6 位支付密码';
+            if (this.error) return;
+            this.locked = true;
+            const result = await this.run('send', { ...this.draft, pay_password: this.password });
+            if (result) this.packet = result;
+            else if ([40001,40003,40005,40006,50301].includes(this.errorCode)) this.locked = false;
+            // A retry never creates a fresh intent. Server decides whether it was funded.
+        },
+        async retry() {
+            if (!this.draft || this.busy) return;
+            const result = await this.run('send', { ...this.draft, pay_password: '' });
+            if (result) this.packet = result;
+            else if ([40001,40003,40005,40006,50301].includes(this.errorCode)) { this.locked = false; await this.load(); }
+        },
+        async claim() { if (this.packet && this.packet.can_claim) { const result = await this.run('claim', { packet_id: this.packet.packet_id }); if (result) this.packet = result; } },
+        async refresh() { if (this.packet) { const result = await this.run('detail', { packet_id: this.packet.packet_id }); if (result) this.packet = result; } },
+        close() { this.password = ''; this.$emit('close'); },
+        setPassword() { this.close(); uni.navigateTo({ url: '/public/pages/user/setPaypass' }); }
+    }
+};
+</script>
+<style>
+.mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.45); justify-content: center; align-items: center; }
+.panel { width: 320px; padding: 22px; background-color: #fffaf4; border-radius: 16px; }
+.heading { flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 18px; }.title { font-size: 20px; font-weight: 700; color: #563627; }.close { font-size: 14px; color: #907969; padding: 5px; }
+.assets { flex-direction: row; margin-top: 15px; }.asset { flex: 1; padding: 10px 0; align-items: center; background-color: #f2e7d9; border-radius: 5px; margin-right: 5px; }.selected { background-color: #f8c68f; }.asset-text { color: #69432c; font-size: 14px; }
+.input { height: 48px; background-color: #fff; border-radius: 6px; padding: 0 12px; margin-top: 12px; font-size: 16px; color: #372c27; }
+.tip { font-size: 12px; color: #947f70; margin-top: 12px; }.error { font-size: 13px; color: #bd3827; margin-bottom: 8px; }.blessing { font-size: 17px; color: #563627; margin-top: 12px; }.amount { font-size: 30px; color: #c8412e; margin-top: 25px; }
+.primary { height: 46px; margin-top: 20px; background-color: #d95235; border-radius: 7px; align-items: center; justify-content: center; }.button-text { color: #fff9eb; font-size: 16px; }.secondary { padding: 14px; align-items: center; }.secondary-text { font-size: 14px; color: #ac5038; }
+</style>

@@ -7,7 +7,7 @@ function fixture() {
     const file = fs.readFileSync(new URL('../pages/im/chat.nvue', import.meta.url), 'utf8');
     const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
     const timers = new Map(); let now = 0, id = 0;
-    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {},
+    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, RedPacketPanel: {},
         setTimeout: (fn, ms) => { timers.set(++id, { fn, at: now + ms }); return id; }, clearTimeout: id => timers.delete(id),
         uni: { getSystemInfoSync: () => ({ screenHeight: 800 }), $emit() {}, $off() {} } };
     vm.runInNewContext(script, context);

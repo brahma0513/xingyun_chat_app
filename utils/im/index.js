@@ -13,6 +13,7 @@ import Store from '@/store';
 import publicAPI from '@/public/api.js';
 import { apiUrl, customer_id, api_key, app_id, appExamine } from '@/utils/config.js';
 import { createIMSession } from './session.js';
+import { startRedPacketBridge } from './redpacket-api.js';
 
 function currentAccount() {
     const user = Store.state.vuex_user || {};
@@ -199,6 +200,7 @@ function syncAccountWithoutInterruptingCall() {
 export function startIMLogin() {
     if (started) return;
     started = true;
+    startRedPacketBridge();
     // nvue pages run in a separate context: only share sanitized status, never credentials.
     uni.$on('im:request-status', broadcastStatus);
     uni.$on('im:chat-show', event => readState.show(event));

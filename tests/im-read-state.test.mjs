@@ -62,7 +62,7 @@ test('unread refresh and clear use dedicated store; clear does not wipe total lo
 test('chat clears route, title and profile on logout, including same-user relogin', () => {
     const file = fs.readFileSync(new URL('../pages/im/chat.nvue', import.meta.url), 'utf8');
     const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
-    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {},
+    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, RedPacketPanel: {},
         uni: { getSystemInfoSync: () => ({ screenHeight: 800 }), $emit() {} } };
     vm.runInNewContext(script, context);
     const component = context.module.exports, page = component.data();
@@ -103,7 +103,7 @@ test('resuming a page waits for fresh App status and background blocks readiness
 function chatFixture() {
     const file = fs.readFileSync(new URL('../pages/im/chat.nvue', import.meta.url), 'utf8');
     const script = file.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'module.exports =');
-    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {},
+    const context = { module: { exports: {} }, status: {}, profileView: {}, CustomNavbar: {}, MessageList: {}, MessageInput: {}, RedPacketPanel: {},
         uni: { getSystemInfoSync: () => ({ screenHeight: 800 }), $emit() {} } };
     vm.runInNewContext(script, context);
     const component = context.module.exports, page = component.data();
