@@ -93,3 +93,45 @@ test('conversation list exposes only pin and delete actions and confirms deletio
     assert.match(list, /title:\s*'删除聊天'/);
     assert.match(list, /await this\.storeInstance\.deleteConversation/);
 });
+
+test('chat avatars forward the sender and open the corresponding user homepage once',()=>{
+    const chat=read('pages/im/chat.nvue');
+    const start=chat.indexOf('        openUserProfile(profile) {');
+    const method=chat.slice(start,chat.indexOf('        renderRedPacket(message)',start)).trim().replace(/,$/,'').replace('openUserProfile(profile)','function(profile)');
+    const open=new Function('return ('+method+')')();
+    const requests=[]; globalThis.uni={navigateTo:options=>requests.push(options),showToast(){}};
+    const vm={imReady:true,routeError:'',conversationID:'c2c_user_2',imStatus:{userID:'user_1'},currentProfiles:{user_2:{nickname:'好友昵称'}},stopVoiceRecording(){},collapse(){}};
+    const from={userID:'user_2',nickname:'消息昵称',avatarURL:'avatar.png'};
+    const message=read('uni_modules/tuikit-atomic-x/components/MessageList/Message/Message.nvue');
+    const list=read('uni_modules/tuikit-atomic-x/components/MessageList/MessageList.nvue');
+    const avatar=new Function(message.match(/handleAvatarTap\(\) \{([^\n]+)\}/)[1]);
+    const forward=new Function('profile',list.match(/handleAvatarTap\(profile\) \{([^\n]+)\}/)[1]);
+    avatar.call({message:{from},$emit:(event,profile)=>{assert.equal(event,'onAvatarTap');forward.call({$emit:(name,value)=>{assert.equal(name,'onAvatarTap');open.call(vm,value);}},profile);}});
+    assert.equal(requests[0].url,'/pages/im/user-profile?userID=user_2');
+    assert.equal(uni.$userProfileData.userInfo.nickname,'好友昵称'); assert.equal(uni.$userProfileData.userInfo.userID,'user_2');
+    open.call(vm,from); assert.equal(requests.length,1); requests[0].complete();
+    open.call(vm,{userID:'user_3'}); open.call(vm,{userID:'../invalid'}); assert.equal(requests.length,1);
+    vm.imReady=false; open.call(vm,from); assert.equal(requests.length,1);
+    assert.match(message,/@tap\.stop="handleAvatarTap"/); assert.match(list,/@onAvatarTap="handleAvatarTap"/); assert.match(chat,/@onAvatarTap="openUserProfile"/);
+    for(const file of ['Message/Message.nvue','MessageList.nvue']) assert.match(read('uni_modules/tuikit-atomic-x/components_compatible/MessageList/'+file), /handleAvatarTap/);
+});
+
+test('friend operation uses nested result codes instead of reporting bridge success',async()=>{
+    const {friendOperationResult}=await import('data:text/javascript;base64,'+Buffer.from(read('utils/im/friend-response.js')).toString('base64'));
+    assert.equal(friendOperationResult({code:0,data:{data:{resultCode:30539,resultInfo:'pending'}}}).code,30539);
+    assert.equal(friendOperationResult({code:0,data:{code:30525,message:'denied'}}).code,30525);
+    assert.equal(friendOperationResult({code:0,data:{data:{code:0}}}).code,0);
+    assert.equal(friendOperationResult({code:30539}).code,30539);
+    assert.throws(()=>friendOperationResult({code:null}));
+    assert.throws(()=>friendOperationResult({code:0,data:{resultCode:'invalid'}}));
+});
+test('profile uses actual friend list and pending applications for relationship actions',()=>{
+    const source=read('pages/im/user-profile.nvue');
+    const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm,'').replace('components: { CustomNavbar, Avatar },','');
+    const definition=new Function(script.replace('export default','return'))();
+    const vm={userID:'user_851629863',userInfo:{isFriend:false},application:null,contactState:{friendList:{value:[]},friendApplicationList:{value:[{userID:'user_851629863',type:2}]}}};
+    vm.currentApplication=definition.computed.currentApplication.call(vm); vm.isFriend=definition.computed.isFriend.call(vm);
+    assert.equal(definition.computed.sentApplication.call(vm),true); assert.equal(vm.isFriend,false);
+    vm.contactState.friendList.value.push({userID:'user_851629863'}); vm.isFriend=definition.computed.isFriend.call(vm);
+    assert.equal(vm.isFriend,true); assert.equal(definition.computed.sentApplication.call(vm),false);
+});

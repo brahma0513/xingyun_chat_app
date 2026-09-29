@@ -10,17 +10,17 @@
       <view class="audio-highlight">
         <view class="audio-wave-container" :class="'wave-'+ (message.isSentBySelf ? 'out' : 'in')">
           <view class="audio-wave-clip" :style="{ width: '12rpx', opacity: waveOpacity0 }">
-            <image src="/uni_modules/tuikit-atomic-x/static/icon/audio.png" class="audio-wave-icon" mode="aspectFit" />
+            <image :src="waveIconSrc" class="audio-wave-icon" mode="aspectFit" />
           </view>
           <view class="audio-wave-clip" :style="{ width: '26rpx', opacity: waveOpacity1 }">
-            <image src="/uni_modules/tuikit-atomic-x/static/icon/audio.png" class="audio-wave-icon" mode="aspectFit" />
+            <image :src="waveIconSrc" class="audio-wave-icon" mode="aspectFit" />
           </view>
           <view class="audio-wave-clip" :style="{ width: '40rpx', opacity: waveOpacity2 }">
-            <image src="/uni_modules/tuikit-atomic-x/static/icon/audio.png" class="audio-wave-icon" mode="aspectFit" />
+            <image :src="waveIconSrc" class="audio-wave-icon" mode="aspectFit" />
           </view>
         </view>
         <view class="audio-duration">
-          <text class="duration-text">{{ formatDuration(soundDuration) }}</text>
+          <text class="duration-text" :class="'duration-text--' + (message.isSentBySelf ? 'out' : 'in')">{{ formatDuration(soundDuration) }}</text>
         </view>
       </view>
     </view>
@@ -129,6 +129,11 @@ export default {
     })
   },
   computed: {
+    waveIconSrc: function() {
+      return this.message.isSentBySelf
+        ? '/uni_modules/tuikit-atomic-x/static/icon/audio-white.png'
+        : '/uni_modules/tuikit-atomic-x/static/icon/audio.png'
+    },
     isPlaying: function() {
       return this.playingFlag
     },
@@ -617,16 +622,17 @@ export default {
 /* 自己发送的消息整体右对齐 */
 .audio-message-wrapper--self { align-items: flex-end; }
 .audio-message { min-width: 200rpx; }
-.content-in { background-color: #F0F2F7; border-radius: 4rpx 20rpx 20rpx 20rpx; }
-.content-out { background-color: #CCE2FF; border-radius: 20rpx 4rpx 20rpx 20rpx; }
-.audio-highlight { flex: 1; flex-direction: row; align-items: center; padding: 20rpx; background-color: transparent; }
+.content-in { background-color: #FFFFFF; border-width: 1rpx; border-style: solid; border-color: #ECEEF3; border-top-left-radius: 12rpx; border-top-right-radius: 36rpx; border-bottom-right-radius: 36rpx; border-bottom-left-radius: 36rpx; }
+.content-out { background-color: #4655F5; border-top-left-radius: 36rpx; border-top-right-radius: 12rpx; border-bottom-right-radius: 36rpx; border-bottom-left-radius: 36rpx; }
+.audio-highlight { flex: 1; flex-direction: row; align-items: center; padding: 22rpx 28rpx; background-color: transparent; }
 .content-out .audio-highlight { flex-direction: row-reverse; }
 .audio-wave-container { position: relative; width: 40rpx; height: 40rpx; }
 .wave-in { transform: scaleX(-1); }
 .audio-wave-clip { position: absolute; right: 0; top: 0; height: 40rpx; overflow: hidden; }
 .audio-wave-icon { position: absolute; right: 0; top: 0; width: 40rpx; height: 40rpx; }
 .audio-duration { margin-left: 8rpx; margin-right: 8rpx; }
-.duration-text { padding: 0 4rpx; font-size: 28rpx; line-height: 32rpx; font-weight: 500; color: rgba(0, 0, 0, 0.9); }
+.duration-text { padding: 0 4rpx; font-size: 28rpx; line-height: 32rpx; font-weight: 600; color: #0F1220; }
+.duration-text--out { color: #FFFFFF; }
 /* 语音转文字结果展示
  * 入场动画使用 nvue 原生 animation.transition 驱动（见 _playCurtainAnimation），
  * 而非 css @keyframes—— nvue 对 @keyframes 支持不稳定 */

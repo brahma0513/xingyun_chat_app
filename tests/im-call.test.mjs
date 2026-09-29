@@ -71,8 +71,8 @@ test('Vue2 preparation also replaces the call page', () => {
     assert.doesNotMatch(callPage, /<script setup/);
 });
 
-test('messages and contacts retain their custom navigation bar', () => {
+test('messages, contacts and profile retain their custom navigation bar', () => {
     const list = read('pages/im/conversations.nvue');
     assert.match(list, /<CustomNavbar :title="pageTitle"/);
-    assert.match(list, /pageTitle\(\).*activeTab === 'contacts' \? '通讯录' : this.activeTab === 'profile' \? '我的' : '消息'/);
+    assert.match(list, /pageTitle\(\).*activeTab === 'contacts' \? '通讯录' : this\.activeTab === 'profile' \? '我的' : '消息'/);
 });

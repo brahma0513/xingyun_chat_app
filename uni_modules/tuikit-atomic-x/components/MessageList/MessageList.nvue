@@ -44,6 +44,7 @@
             :inputPanelHeight="inputPanelHeight"
             @onMessageListTap="handleMessageListTap"
             @onMessageTap="handleMessageTap"
+            @onAvatarTap="handleAvatarTap"
           />
         </view>
       </cell>
@@ -543,7 +544,8 @@ export default {
       this.$emit('onMessageListTap')
     },
     handleMessageListTap() { this.$emit('onMessageListTap') },
-    handleMessageTap(message) { this.$emit('onMessageTap', message) }
+    handleMessageTap(message) { this.$emit('onMessageTap', message) },
+    handleAvatarTap(profile) { this.$emit('onAvatarTap', profile) }
   }
 }
 </script>

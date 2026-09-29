@@ -5,7 +5,9 @@
     <component v-else-if="isCustomCenterMessage" :is="centerCustomComponent" :message="message" :conversationID="conversationID" />
   </view>
   <view v-else class="msg msg--no-select" :class="messageClasses" :data-message-id="message.msgID" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @tap.stop="handleTap" @touchmove.stop.prevent="handleTouchMove">
-    <Avatar v-if="showAvatar" :src="message.from.avatarURL" :name="displayName" :size="80" defaultAvatarType="user" lazy class="msg__avatar" />
+    <view v-if="showAvatar" class="msg__avatar" @tap.stop="handleAvatarTap" @touchstart.stop="" @touchend.stop="">
+      <Avatar :src="message.from.avatarURL" :name="displayName" :size="80" defaultAvatarType="user" lazy />
+    </view>
     <view class="msg__main msg__main--no-select" :class="'msg__main--'+ (message.isSentBySelf ? 'out' : 'in')">
       <view v-if="showNickname" class="msg__nickname">
         <text class="msg__nickname-text msg__text--no-select">{{ displayName }}</text>
@@ -210,6 +212,7 @@ export default {
   beforeDestroy() { this.stopLoadingAnimation() },
   beforeUnmount() { this.stopLoadingAnimation() },
   methods: {
+    handleAvatarTap() { if (this.message && this.message.from) this.$emit('onAvatarTap', this.message.from) },
     getMessagePosition(messageId) {
       var self = this
       return new Promise(function(resolve, reject) {

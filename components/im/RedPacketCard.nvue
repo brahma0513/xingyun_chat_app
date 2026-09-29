@@ -1,27 +1,49 @@
 <template>
-    <view class="packet">
-        <view class="body"><view class="symbol"><text class="symbol-text">福</text></view><view class="words"><text class="blessing">{{ packet ? packet.blessing : '红包' }}</text><text class="hint">{{ statusText }}</text></view></view>
-        <view class="footer"><text class="label">{{ packet ? assetNames[packet.asset] : '' }}红包</text></view>
+    <view class="packet" :class="settled ? 'packet--settled' : ''">
+        <view class="body" :class="settled ? 'body--settled' : ''"><view class="symbol" :class="settled ? 'symbol--settled' : ''"><text class="symbol-text" :class="settled ? 'symbol-text--settled' : ''">福</text></view><view class="words"><text class="blessing" :class="settled ? 'blessing--settled' : ''">{{ packet ? packet.blessing : '红包' }}</text><text class="hint" :class="settled ? 'hint--settled' : ''">{{ statusText }}</text></view></view>
+        <view class="footer"><view class="footer-dot"></view><text class="label">{{ packet ? (currentAssetName || packet.asset_name || assetNames[packet.asset]) : '' }}红包</text></view>
     </view>
 </template>
 <script>
 import { parseRedPacket, REDPACKET_ASSETS } from '@/utils/im/redpacket.js';
 export default {
     props: { message: { type: Object, required: true }, conversationID: { type: String, default: '' } },
-    data() { return { statusText: '点击查看红包', assetNames: REDPACKET_ASSETS }; },
-    computed: { packet() { return parseRedPacket(this.message); } },
+    data() { return { status: '', statusText: '点击查看红包', currentAssetName: '', assetNames: REDPACKET_ASSETS }; },
+    computed: {
+        packet() { return parseRedPacket(this.message); },
+        // 已领取、已退回、已过期等不可再领的状态使用淡色卡片
+        settled() { return ['claimed', 'refunded', 'failed', 'expired'].includes(this.status) || (!this.status && /已|过期|退/.test(this.statusText || '')); }
+    },
     mounted() {
-        this._updatePacket = value => { if (this.packet && value.packet_id === this.packet.packet_id) this.statusText = value.status_text; };
+        this._updatePacket = value => {
+            if (!this.packet || !value || value.packet_id !== this.packet.packet_id) return;
+            if (value.status) this.status = String(value.status);
+            if (value.status_text) this.statusText = value.status_text;
+            if (value.asset_name) this.currentAssetName = String(value.asset_name).slice(0,20);
+        };
         uni.$on('im:redpacket-updated', this._updatePacket);
+        // 通知聊天页查询该红包的最新状态，结果通过 im:redpacket-updated 回来
+        if (this.packet) uni.$emit('im:redpacket-card-mounted', { packet_id: this.packet.packet_id, conversationID: this.conversationID });
     },
     beforeDestroy() { uni.$off('im:redpacket-updated', this._updatePacket); }
 };
 </script>
 <style>
-.packet { width: 240px; border-radius: 10px; background-color: #e85b3c; overflow: hidden; }
-.body { flex-direction: row; align-items: center; padding: 18px 14px; }
-.symbol { width: 38px; height: 44px; border-radius: 5px; background-color: #fbd38e; align-items: center; justify-content: center; margin-right: 12px; }
-.symbol-text { font-size: 23px; color: #bc412d; }
-.words { flex: 1; }.blessing { color: #fff8e5; font-size: 15px; lines: 2; }.hint { margin-top: 7px; color: #ffe0c6; font-size: 12px; }
-.footer { background-color: #fff9ef; padding: 8px 12px; }.label { font-size: 11px; color: #9a6b48; }
+.packet { width: 500rpx; border-radius: 36rpx; background-color: #FFFFFF; border-width: 1rpx; border-style: solid; border-color: #F3D9D2; }
+.packet--settled { border-color: #ECEEF3; }
+/* nvue(Android) 的 overflow:hidden 不裁剪子元素背景，圆角需写在子元素上 */
+.body { flex-direction: row; align-items: center; padding: 28rpx 30rpx; background-color: #E0452F; border-top-left-radius: 34rpx; border-top-right-radius: 34rpx; }
+.body--settled { background-color: #FCE9E3; }
+.symbol { width: 88rpx; height: 88rpx; border-radius: 44rpx; background-color: #FBD27A; border-width: 4rpx; border-style: solid; border-color: #E9A93A; align-items: center; justify-content: center; margin-right: 22rpx; }
+.symbol--settled { background-color: #F5D9A6; border-color: #EBC37E; }
+.symbol-text { font-size: 40rpx; font-weight: 700; color: #B4231A; }
+.symbol-text--settled { color: #B3584A; }
+.words { flex: 1; }
+.blessing { color: #FFFFFF; font-size: 30rpx; font-weight: 700; lines: 2; }
+.blessing--settled { color: #7A2A1C; }
+.hint { margin-top: 6rpx; color: #FFE1D9; font-size: 24rpx; }
+.hint--settled { color: #9C4535; }
+.footer { flex-direction: row; align-items: center; background-color: #FFFFFF; padding: 16rpx 30rpx; border-bottom-left-radius: 34rpx; border-bottom-right-radius: 34rpx; }
+.footer-dot { width: 12rpx; height: 12rpx; border-radius: 6rpx; background-color: #E0452F; margin-right: 12rpx; }
+.label { font-size: 22rpx; font-weight: 500; color: #6A7182; }
 </style>

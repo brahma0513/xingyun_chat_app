@@ -17,7 +17,7 @@ export default {
     },
     methods: {
         goBack() { uni.navigateBack(); },
-        success() { setTimeout(() => uni.navigateBack(), 700); }
+        success() { uni.$emit('im:friends-changed'); setTimeout(() => uni.navigateBack(), 700); }
     }
 };
 </script>

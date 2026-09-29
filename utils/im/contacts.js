@@ -4,6 +4,15 @@ export function createContactsReader({ callAPI, addListener, removeListener, onC
     const listener = { type: '', store: 'Contact', name: 'friendList', params: { createStoreParams: id } };
     let disposed = false, bound = false, created = false, timer;
     const parse = value => typeof value === 'string' ? JSON.parse(value) : value;
+    function update(value) {
+        const event = parse(value);
+        const envelope = event && event.friendList != null ? event : parse(event && event.data);
+        const list = parse(envelope && envelope.friendList);
+        if (!Array.isArray(list)) throw new Error('Invalid contact list');
+        clearTimeout(timer);
+        const seen = new Set();
+        onChange(list.filter(p => p && /^user_[1-9]\d*$/.test(p.userID) && !seen.has(p.userID) && seen.add(p.userID)));
+    }
     function fail() { clearTimeout(timer); if (!disposed) onError(); }
     function invoke(api, callback) {
         try {
@@ -20,6 +29,10 @@ export function createContactsReader({ callAPI, addListener, removeListener, onC
         invoke('loadFriends', result => {
             if (disposed) return;
             if (result.code !== 0) fail();
+            else if (result.data) {
+                const data = parse(result.data);
+                if (data && data.friendList != null) update(data);
+            }
             // The friendList listener supplies the actual data, including [].
         });
     }
@@ -31,11 +44,7 @@ export function createContactsReader({ callAPI, addListener, removeListener, onC
         addListener(listener, value => {
             if (disposed) return;
             try {
-                const event = parse(value), list = parse(event.friendList);
-                if (!Array.isArray(list)) throw new Error('Invalid contact list');
-                clearTimeout(timer);
-                const seen = new Set();
-                onChange(list.filter(p => p && /^user_[1-9]\d*$/.test(p.userID) && !seen.has(p.userID) && seen.add(p.userID)));
+                update(value);
             } catch (_) { fail(); }
         });
         bound = true;

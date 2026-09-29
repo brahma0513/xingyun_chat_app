@@ -70,7 +70,7 @@ export default {
       this.contactState.addFriend(this.userInfo.userID, this.remark.trim(), message).then(function(res) {
         var title = res.code === 30539 ? '已发送申请' : '添加好友成功'
         showToast({ message: title, type: 'success' })
-        self.$emit('success', 'friend', self.userInfo)
+        self.$emit('success', 'friend', self.userInfo, res)
       }).catch(function(error) {
         console.warn('add friend error:', error)
         // 对方已将本人加入黑名单：SDK 错误信息形如 'Err_SNS_FriendAdd_Exist_In_Reverse_Black_List'

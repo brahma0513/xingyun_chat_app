@@ -30,6 +30,14 @@
       "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustNothing" } }
     },
     {
+      "path": "pages/im/redpacket-send",
+      "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none", "softinputMode": "adjustNothing" } }
+    },
+    {
+      "path": "pages/im/redpacket-detail",
+      "style": { "navigationStyle": "custom", "backgroundColor": "transparent", "app-plus": { "background": "transparent", "backgroundColorTop": "transparent", "animationType": "fade-in", "bounce": "none", "popGesture": "none" } }
+    },
+    {
       "path": "pages/im/add-friend",
       "style": { "navigationStyle": "custom", "app-plus": { "bounce": "none" } }
     },
@@ -40,6 +48,14 @@
     {
       "path": "pages/im/edit-profile",
       "style": { "navigationBarTitleText": "编辑个人资料" }
+    },
+    {
+      "path": "pages/im/my-qrcode",
+      "style": { "navigationBarTitleText": "我的二维码" }
+    },
+    {
+      "path": "pages/im/scan",
+      "style": { "navigationBarTitleText": "扫一扫" }
     },
     {
       "path": "pages/im/friend-verify",

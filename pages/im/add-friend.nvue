@@ -1,6 +1,10 @@
 <template>
     <view class="page">
         <CustomNavbar title="添加好友" :showBack="true" :showMenu="false" @back="goBack" />
+        <view class="scan-entry" @tap="openScan">
+            <text class="scan-label">扫一扫添加好友</text>
+            <text class="scan-arrow">›</text>
+        </view>
         <view class="content"><AddFriend :resolveUserID="resolveUserID" @userSelect="openProfile" /></view>
     </view>
 </template>
@@ -11,6 +15,7 @@ import { resolvePhoneUserID } from '@/utils/im/phone-search-client.js';
 export default {
     components: { CustomNavbar, AddFriend },
     methods: {
+        openScan() { uni.navigateTo({ url: '/pages/im/scan' }); },
         resolveUserID(value) { return resolvePhoneUserID(value); },
         goBack() { uni.navigateBack(); },
         openProfile(user) {
@@ -24,4 +29,7 @@ export default {
 <style>
 .page { flex: 1; background-color: #f5f6f8; }
 .content { flex: 1; }
+.scan-entry { margin: 16px; padding: 18px; border-radius: 12px; background-color: #ffffff; flex-direction: row; align-items: center; }
+.scan-label { flex: 1; color: #2563eb; font-size: 16px; }
+.scan-arrow { color: #748299; font-size: 24px; }
 </style>

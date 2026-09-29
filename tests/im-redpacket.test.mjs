@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const importSource = source => import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const coreSource = fs.readFileSync(new URL('../utils/im/redpacket.js', import.meta.url), 'utf8');
 const core = await importSource(coreSource);
+const ui = await importSource(fs.readFileSync(new URL('../utils/im/redpacket-ui.js', import.meta.url), 'utf8'));
 const responseParser = await importSource(fs.readFileSync(new URL('../utils/im/redpacket-response.js', import.meta.url), 'utf8'));
 const bridgeSource = fs.readFileSync(new URL('../utils/im/redpacket-api.js', import.meta.url), 'utf8')
     .replace(/import Store[^;]+;/, 'const Store = globalThis.__rpStore;')
@@ -79,7 +80,7 @@ test('资金结果未明确前阻止改变金额的新红包', async () => {
     await f.emit('send',{amount:'13'}); assert.equal(f.requests.length,1); assert.match(f.responses.at(-1).error,/上一个/);
 });
 test('确定的密码错误和余额不足可重新填写，未知错误保留意图', async () => {
-    for(const code of [40005,40006,50303]) {
+    for(const code of [40005,40006,40007,50303]) {
         const f=await fixture(); const request=f.emit('send'); await tick(); f.success(0,null,code); await request;
         assert.equal(f.storage.size,code===50303?1:0); assert.equal(f.responses.at(-1).code,code);
     }
@@ -100,10 +101,28 @@ test('options 恢复原意图，未发生支付不保存草稿', async () => {
     const f=await fixture(); const request=f.emit('options'); await tick(); f.success(0,{assets:[],has_pay_password:true}); await request;
     assert.equal(f.storage.size,0); assert.equal(f.responses.at(-1).data.draft.receiver_id,'2');
 });
+
+test('从页面 URL 恢复的会话编号可通过 App bridge 的严格身份校验', async () => {
+    const f = await fixture();
+    const context = ui.readRedPacketRoute({ userID: 'user_1', accountSessionID: '10', conversationID: 'c2c_user_2' });
+    assert.equal(typeof context.accountSessionID, 'number');
+    const pending = f.emit('options', {}, context); await tick();
+    assert.equal(f.requests.length, 1);
+    f.success(0, { assets: [], has_pay_password: true }); await pending;
+    assert.equal(f.responses.at(-1).error, undefined);
+    assert.equal(f.responses.at(-1).data.has_pay_password, true);
+});
 test('nvue RPC 清理监听器、服务端错误与超时', async () => {
     const f=await fixture(); const context={userID:'user_1',accountSessionID:10};
     const pending=core.requestRedPacket('detail',{receiver_id:'2'},context,1000); await tick(); f.success(0,{packet_id:'a'.repeat(32)}); assert.equal((await pending).packet_id,'a'.repeat(32));
     assert.equal(f.handlers.get('im:redpacket-result').size,0);
     const bad=core.requestRedPacket('claim',{receiver_id:'2'},context,1000); await tick(); f.success(1,null,40301); await assert.rejects(bad,e=>e.code===40301);
     const timeout=core.requestRedPacket('detail',{receiver_id:'2'},context,5); await assert.rejects(timeout,/超时/); assert.equal(f.handlers.get('im:redpacket-result').size,0);
+});
+
+test('红包卡片支持自定义名称且兼容历史消息',()=>{
+    const value={businessID:'xingyun_redpacket',version:1,packet_id:'a'.repeat(32),asset:'currency',asset_name:'星云币'};
+    const message=v=>({messagePayload:{customData:JSON.stringify(v)}});
+    assert.equal(core.parseRedPacket(message(value)).asset_name,'星云币');
+    assert.equal(core.parseRedPacket(message({...value,asset_name:'<script>'})).asset_name,undefined);
 });

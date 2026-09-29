@@ -2,6 +2,7 @@
  * 联系人状态管理 (Vue2 适配版)
  * @module ContactState
  */
+import { friendOperationResult } from '@/utils/im/friend-response';
 import { makeReactive } from "../utils/reactiveCompat";
 // @ts-ignore
 import { callAPI, addListener, removeListener } from "../utils/tuikitBridge";
@@ -203,11 +204,14 @@ class ContactState {
       callAPI(JSON.stringify(options), (response : string) => {
         try {
           const result = safeJsonParse<HybridResponseData>(response, { code: -1 });
-          if (result.code === 0 || result.code === 30539) {
-            resolve(result);
+          const operation = friendOperationResult(result);
+          if (operation.code === 0 || operation.code === 30539) {
+            this.loadFriends().catch(() => {});
+            this.loadFriendApplications().catch(() => {});
+            resolve(operation);
           } else {
-            console.error(`[${this.instanceId}][addFriend] Failed:`, result.message);
-            reject(Object.assign(new Error(result.message || 'Failed to add friend'), { errCode: result.code }));
+            console.error(`[${this.instanceId}][addFriend] Failed:`, operation.code);
+            reject(Object.assign(new Error(operation.message || 'Failed to add friend'), { errCode: operation.code }));
           }
         } catch (error) {
           console.error(`[${this.instanceId}][addFriend] Parse error:`, error);

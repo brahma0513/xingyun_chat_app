@@ -36,7 +36,7 @@ export function startRedPacketBridge() {
             let result = await post(event.action, payload, user);
             if (!live()) return;
             if (Number(result.errcode) !== 0) {
-                if (event.action === 'send' && [40001,40003,40005,40006,50301].includes(Number(result.errcode))) uni.removeStorageSync(key);
+                if (event.action === 'send' && [40001,40003,40005,40006,40007,50301].includes(Number(result.errcode))) uni.removeStorageSync(key);
                 const error = new Error(result.errmsg || '红包操作失败'); error.code = result.errcode; throw error;
             }
             let output = result.data;

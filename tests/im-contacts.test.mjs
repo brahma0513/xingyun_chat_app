@@ -12,7 +12,7 @@ function setup(timeout = 100) {
         removeListener(options) { removed.push(options); },
         onChange(value) { changes.push(value); }, onError() { errors.push(true); }
     });
-    return { reader, calls, changes, errors, removed, emit: value => listener(JSON.stringify({ friendList: value })) };
+    return { reader, calls, changes, errors, removed, emit: value => listener(JSON.stringify({ friendList: value })), emitRaw: value => listener(JSON.stringify(value)) };
 }
 test('loads only valid unique app contacts and handles an empty list', () => {
     const s = setup();
@@ -49,4 +49,17 @@ test('native errors and timeout surface a retryable failure', async () => {
     await new Promise(resolve => setTimeout(resolve, 15));
     assert.equal(stalled.errors.length, 1);
     stalled.reader.dispose();
+});
+
+test('reload after adding a friend replaces the empty directory with native friends',()=>{
+    const s=setup(); s.calls[0].callback('{"code":0}'); s.emit([]);
+    s.reader.reload(); assert.equal(s.calls[2].api,'loadFriends');
+    s.emit([{userID:'user_123',nickname:'好友'}]); assert.equal(s.changes.at(-1)[0].userID,'user_123');
+    s.reader.dispose(); s.reader.reload(); assert.equal(s.calls.filter(c=>c.api==='loadFriends').length,2);
+});
+test('native wrapped events and load response snapshots populate contacts',()=>{
+    const s=setup(); s.calls[0].callback('{"code":0}');
+    s.emitRaw({data:{friendList:JSON.stringify([{userID:'user_123'}])}}); assert.equal(s.changes.at(-1)[0].userID,'user_123');
+    s.calls[1].callback(JSON.stringify({code:0,data:{friendList:[{userID:'user_456'}]}})); assert.equal(s.changes.at(-1)[0].userID,'user_456');
+    s.emitRaw({data:{friendList:[]}}); assert.deepEqual(s.changes.at(-1),[]); s.reader.dispose();
 });

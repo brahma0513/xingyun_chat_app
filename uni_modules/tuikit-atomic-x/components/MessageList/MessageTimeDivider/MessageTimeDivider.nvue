@@ -36,13 +36,15 @@ export default {
 
 .msg-time-divider__content {
   margin: 0 20rpx;
+  padding: 6rpx 20rpx;
+  border-radius: 20rpx;
+  background-color: rgba(15, 18, 32, 0.05);
 }
 
 .msg-time-divider__text {
-  font-size: 24rpx;
-  color: #999;
-  line-height: 1.2;
-  padding: 8rpx 16rpx;
-  border-radius: 16rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #6A7182;
+  line-height: 32rpx;
 }
 </style>

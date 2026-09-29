@@ -3,30 +3,49 @@
         <view v-if="error" class="empty" @tap="retry"><text class="hint">通讯录加载失败，点击重试</text></view>
         <view v-else class="directory">
             <list class="list" :show-scrollbar="false">
+                <refresh :display="refreshing ? 'show' : 'hide'" @refresh="reload"><view class="refresh-state"><text class="hint">刷新通讯录…</text></view></refresh>
                 <cell v-if="!search.trim()" key="contact-actions">
                     <view class="quick-actions">
-                        <view class="quick-row" @tap="$emit('applications')">
-                            <view class="quick-icon new-icon"><image class="quick-image" src="/uni_modules/tuikit-atomic-x/static/icon/new-contacts.png" mode="aspectFit" /></view>
-                            <text class="quick-title">新的朋友</text>
-                            <view v-if="applicationUnread > 0" class="badge"><text class="badge-text">{{ applicationUnread > 99 ? '99+' : applicationUnread }}</text></view>
-                            <image class="arrow" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
+                        <view class="quick-card quick-card--first" @tap="$emit('applications')">
+                            <view class="quick-icon new-icon">
+                                <image class="quick-image" src="/uni_modules/tuikit-atomic-x/static/icon/new-contacts.png" mode="aspectFit" />
+                                <view v-if="applicationUnread > 0" class="badge"><text class="badge-text">{{ applicationUnread > 99 ? '99+' : applicationUnread }}</text></view>
+                            </view>
+                            <view class="quick-text">
+                                <text class="quick-title">新的朋友</text>
+                                <text class="quick-sub">{{ applicationUnread > 0 ? applicationUnread + ' 条好友申请' : '好友申请' }}</text>
+                            </view>
                         </view>
-                        <view class="quick-row" @tap="$emit('add')">
+                        <view class="quick-card" @tap="$emit('add')">
                             <view class="quick-icon add-icon"><text class="plus">＋</text></view>
-                            <text class="quick-title">添加好友</text>
-                            <image class="arrow" src="/uni_modules/tuikit-atomic-x/static/icon/arrow-right.png" mode="aspectFit" />
+                            <view class="quick-text">
+                                <text class="quick-title">添加好友</text>
+                                <text class="quick-sub">ID 或扫码</text>
+                            </view>
                         </view>
                     </view>
                 </cell>
                 <cell v-if="loading" key="loading"><view class="inline-empty" /></cell>
-                <cell v-else-if="!filtered.length" key="empty"><view class="inline-empty"><text class="hint">{{ search.trim() ? '没有找到联系人' : '暂无 IM 好友' }}</text></view></cell>
-                <cell v-for="row in rows" :key="row.key" :ref="row.key">
-                    <view v-if="row.letter" class="section" @appear="activeLetter = row.letter"><text class="section-label">{{ row.letter }}</text></view>
-                    <view v-else class="person" @tap="$emit('select', row.person)">
-                        <Avatar :src="row.person.avatarURL" :name="name(row.person)" :size="80" :pureMode="true" defaultAvatarType="user" />
-                        <view class="details"><text class="name" :numberOfLines="1">{{ name(row.person) }}</text></view>
+                <cell v-else-if="!filtered.length" key="empty">
+                    <view v-if="search.trim()" class="inline-empty"><text class="hint">没有找到联系人</text></view>
+                    <view v-else class="empty-state">
+                        <view class="empty-art"><view class="empty-ring" /><view class="empty-badge"><text class="empty-plus">＋</text></view></view>
+                        <text class="empty-title">暂无 IM 好友</text>
+                        <text class="empty-text">通过用户 ID 搜索朋友，加上后就能开始聊天</text>
+                        <view class="empty-button" @tap="$emit('add')"><text class="empty-button-text">添加好友</text></view>
                     </view>
                 </cell>
+                <cell v-if="!loading && filtered.length" key="friends-count">
+                    <view class="count"><text class="count-text">好友 · {{ filtered.length }}</text></view>
+                </cell>
+                <cell v-for="row in rows" :key="row.key" :ref="row.key">
+                    <view v-if="row.letter" class="section" :class="{ 'section--first': row.first }" @appear="activeLetter = row.letter"><text class="section-label">{{ row.letter }}</text></view>
+                    <view v-else class="person" :class="{ 'person--last': row.last }" @tap="$emit('select', row.person)">
+                        <Avatar :src="row.person.avatarURL" :name="name(row.person)" :size="84" :radius="28" :pureMode="true" defaultAvatarType="user" />
+                        <view class="details" :class="{ 'details--end': row.groupEnd }"><text class="name" :numberOfLines="1">{{ name(row.person) }}</text></view>
+                    </view>
+                </cell>
+                <cell key="list-bottom"><view class="list-bottom" /></cell>
             </list>
             <view v-if="groups.length" class="index">
                 <view v-for="group in groups" :key="group.letter" class="index-item" :class="{ selected: activeLetter === group.letter }" @tap="jumpTo(group.letter)">
@@ -45,7 +64,7 @@ import { useContactState } from '@/uni_modules/tuikit-atomic-x/state/ContactStat
 export default {
     components: { Avatar },
     props: { search: { type: String, default: '' }, selfID: { type: String, default: '' } },
-    data() { return { people: [], loading: true, error: false, activeLetter: '', contactState: useContactState() }; },
+    data() { return { people: [], loading: true, refreshing: false, error: false, activeLetter: '', contactState: useContactState() }; },
     computed: {
         applicationUnread() { return Number(this.contactState.friendApplicationUnreadCount.value || 0); },
         filtered() {
@@ -65,15 +84,16 @@ export default {
         },
         rows() {
             const rows = [];
-            this.groups.forEach(group => {
-                rows.push({ key: 'letter-' + group.letter, letter: group.letter });
-                group.people.forEach(person => rows.push({ key: person.userID, person }));
+            this.groups.forEach((group, groupIndex) => {
+                rows.push({ key: 'letter-' + group.letter, letter: group.letter, first: groupIndex === 0 });
+                group.people.forEach((person, index) => rows.push({ key: person.userID, person, groupEnd: index === group.people.length - 1 }));
             });
+            if (rows.length) rows[rows.length - 1].last = true;
             return rows;
         }
     },
-    mounted() { this.connect(); },
-    beforeDestroy() { if (this._reader) this._reader.dispose(); },
+    mounted() { this.connect(); this._friendsChanged = () => this.reload(); uni.$on('im:friends-changed', this._friendsChanged); },
+    beforeDestroy() { uni.$off('im:friends-changed', this._friendsChanged); if (this._reader) this._reader.dispose(); },
     methods: {
         jumpTo(letter) {
             const ref = this.$refs['letter-' + letter];
@@ -86,40 +106,64 @@ export default {
         connect() {
             this.loading = true; this.error = false;
             this._reader = createContactsReader({ callAPI, addListener, removeListener,
-                onChange: people => { this.people = people; this.loading = false; this.error = false; },
-                onError: () => { this.loading = false; this.error = true; }
+                onChange: people => { this.people = people; this.loading = false; this.refreshing = false; this.error = false; },
+                onError: () => { this.loading = false; this.refreshing = false; this.error = true; }
             });
         },
+        reload() { if (!this._reader || this.error) { this.retry(); return; } this.refreshing = true; this._reader.reload(); },
         retry() { if (this._reader) this._reader.dispose(); this.connect(); }
     }
 };
 </script>
 <style>
-.contacts { flex: 1; background-color: #ffffff; }
+.contacts { flex: 1; background-color: #F3F4F8; }
+.refresh-state { height: 50px; align-items: center; justify-content: center; }
 .list { flex: 1; }
-.directory { flex: 1; flex-direction: row; }
-.quick-actions { background-color: #ffffff; padding-left: 16px; }
-.quick-row { height: 62px; flex-direction: row; align-items: center; padding-right: 16px; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
-.quick-icon { width: 40px; height: 40px; border-radius: 12px; align-items: center; justify-content: center; margin-right: 14px; }
-.new-icon { background-color: #eef2ff; }
-.add-icon { background-color: #e7f8ef; }
-.quick-image { width: 24px; height: 24px; }
-.plus { color: #169c5b; font-size: 28px; line-height: 30px; }
-.quick-title { flex: 1; color: #101b2b; font-size: 16px; font-weight: 600; }
-.arrow { width: 16px; height: 16px; margin-left: 10px; }
-.badge { min-width: 20px; height: 20px; padding-left: 5px; padding-right: 5px; border-radius: 10px; background-color: #ff4d4f; align-items: center; justify-content: center; }
-.badge-text { color: #ffffff; font-size: 11px; }
+.directory { flex: 1; }
+/* 快捷入口：两张并排卡片 */
+.quick-actions { flex-direction: row; padding: 4px 16px 0 16px; }
+.quick-card { flex: 1; flex-direction: row; align-items: center; padding: 14px 12px; border-radius: 20px; background-color: #FFFFFF; border-width: 1px; border-style: solid; border-color: #ECEEF3; }
+.quick-card--first { margin-right: 10px; }
+.quick-icon { position: relative; width: 40px; height: 40px; border-radius: 14px; align-items: center; justify-content: center; margin-right: 10px; }
+.new-icon { background-color: #EDEFFF; }
+.add-icon { background-color: #E2F5EA; }
+.quick-image { width: 22px; height: 22px; }
+.plus { color: #178246; font-size: 24px; line-height: 28px; font-weight: 700; }
+.quick-text { flex: 1; }
+.quick-title { color: #0F1220; font-size: 15px; font-weight: 700; lines: 1; }
+.quick-sub { margin-top: 2px; color: #6A7182; font-size: 12px; lines: 1; text-overflow: ellipsis; }
+.badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding-left: 5px; padding-right: 5px; border-radius: 9px; background-color: #E0352B; border-width: 2px; border-style: solid; border-color: #FFFFFF; align-items: center; justify-content: center; }
+.badge-text { color: #FFFFFF; font-size: 10px; font-weight: 700; }
+.count { padding: 20px 24px 8px 24px; }
+.count-text { font-size: 13px; font-weight: 600; color: #6A7182; }
+/* 好友分组：同一张白色圆角面板，靠首尾行的圆角拼接 */
+.section { height: 30px; justify-content: flex-end; padding-left: 16px; padding-bottom: 2px; margin-left: 16px; margin-right: 16px; background-color: #FFFFFF; }
+.section--first { border-top-left-radius: 22px; border-top-right-radius: 22px; height: 36px; }
+.section-label { font-size: 12px; font-weight: 700; color: #737A8B; }
+.person { flex-direction: row; align-items: center; padding-left: 16px; margin-left: 16px; margin-right: 16px; background-color: #FFFFFF; }
+.person--last { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; padding-bottom: 6px; }
+.details { flex: 1; margin-left: 12px; height: 60px; justify-content: center; padding-right: 16px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #EEF0F4; }
+.details--end { border-bottom-width: 0; }
+.name { font-size: 15px; font-weight: 600; color: #0F1220; lines: 1; text-overflow: ellipsis; }
+.list-bottom { height: 24px; }
+/* 字母索引 */
+/* 索引浮在列表右侧，不再占用列表宽度 */
+.index { position: absolute; right: 0; top: 0; bottom: 0; width: 22px; justify-content: center; align-items: center; }
+.index-item { width: 18px; height: 18px; border-radius: 9px; margin-top: 1px; justify-content: center; align-items: center; }
+.index-label { font-size: 10px; font-weight: 700; color: #737A8B; }
+.selected { background-color: #4655F5; }
+.selected-label { color: #FFFFFF; }
+/* 空状态 */
 .inline-empty { height: 110px; align-items: center; justify-content: center; }
-.person { flex-direction: row; align-items: center; padding: 0 16px; }
-.details { flex: 1; margin-left: 16px; height: 60px; justify-content: center; border-bottom-width: 1px; border-bottom-color: #eff0f4; }
-.name { font-size: 17px; font-weight: 500; color: #101b2b; lines: 1; text-overflow: ellipsis; }
-.section { height: 28px; justify-content: center; padding-left: 16px; background-color: #f4f5f8; }
-.section-label { font-size: 13px; color: #8992a3; }
-.index { width: 28px; justify-content: center; align-items: center; }
-.index-item { width: 24px; height: 22px; border-radius: 12px; justify-content: center; align-items: center; }
-.index-label { font-size: 11px; color: #8992a3; }
-.selected { background-color: #101b2b; }
-.selected-label { color: #ffffff; }
+.empty-state { align-items: center; padding: 40px 36px 24px 36px; }
+.empty-art { width: 150px; height: 150px; align-items: center; justify-content: center; }
+.empty-ring { position: absolute; left: 0; top: 0; width: 150px; height: 150px; border-radius: 75px; border-width: 1.5px; border-style: dashed; border-color: #CDD1DC; }
+.empty-badge { width: 64px; height: 64px; border-radius: 22px; background-color: #4655F5; align-items: center; justify-content: center; }
+.empty-plus { color: #FFFFFF; font-size: 34px; line-height: 38px; font-weight: 700; }
+.empty-title { margin-top: 20px; font-size: 18px; font-weight: 700; color: #0F1220; }
+.empty-text { margin-top: 8px; font-size: 14px; line-height: 22px; color: #545B6C; text-align: center; }
+.empty-button { margin-top: 22px; height: 48px; padding-left: 36px; padding-right: 36px; border-radius: 16px; background-color: #4655F5; align-items: center; justify-content: center; }
+.empty-button-text { color: #FFFFFF; font-size: 15px; font-weight: 700; }
 .empty { flex: 1; align-items: center; justify-content: center; padding: 24px; }
-.hint { font-size: 14px; color: #8992a3; }
+.hint { font-size: 14px; color: #6A7182; }
 </style>

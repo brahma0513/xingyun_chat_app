@@ -65,6 +65,11 @@ export default {
       type: String,
       default: 'square'
     },
+    // 方形头像的圆角（rpx），0 表示沿用默认 10rpx
+    radius: {
+      type: Number,
+      default: 0
+    },
     defaultAvatarType: {
       type: String,
       default: 'none'
@@ -103,7 +108,7 @@ export default {
       return {
         width: this.size + 'rpx',
         height: this.size + 'rpx',
-        borderRadius: this.shape === 'circle' ? (this.size / 2) + 'rpx' : '10rpx'
+        borderRadius: this.shape === 'circle' ? (this.size / 2) + 'rpx' : (this.radius > 0 ? this.radius : 10) + 'rpx'
       }
     },
     textStyle() {

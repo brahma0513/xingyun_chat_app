@@ -7,7 +7,9 @@ export function parseRedPacket(message) {
         const value = typeof raw === 'string' ? JSON.parse(raw) : null;
         if (!value || value.businessID !== REDPACKET_BUSINESS_ID || value.version !== 1 ||
             !/^[a-f0-9]{32}$/.test(value.packet_id || '') || !REDPACKET_ASSETS[value.asset]) return null;
-        return { packet_id: value.packet_id, asset: value.asset, blessing: String(value.blessing || '恭喜发财，大吉大利').slice(0, 60) };
+        const packet = { packet_id: value.packet_id, asset: value.asset, blessing: String(value.blessing || '恭喜发财，大吉大利').slice(0, 60) };
+        if (typeof value.asset_name === 'string' && /^[^\x00-\x1f\x7f<>]{1,20}$/u.test(value.asset_name)) packet.asset_name = value.asset_name;
+        return packet;
     } catch (_) { return null; }
 }
 

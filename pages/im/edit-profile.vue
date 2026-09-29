@@ -8,6 +8,11 @@
             </view>
 
             <view class="card">
+                <view class="row" @tap="openQRCode">
+                    <text class="label">个人二维码</text>
+                    <text class="value">展示二维码，让好友扫一扫</text>
+                    <text class="arrow">›</text>
+                </view>
                 <view class="row" @tap="copyUserID">
                     <text class="label">用户 ID</text>
                     <text class="value">{{ imUserID }}</text>
@@ -84,6 +89,7 @@ export default {
         this.sex = Number(this.vuex_user.sex) === 2 ? 2 : 1;
     },
     methods: {
+        openQRCode() { uni.navigateTo({ url: '/pages/im/my-qrcode' }); },
         editAvatar() {
             this.returningFromAvatar = true;
             uni.navigateTo({ url: '/public/pages/user/editdata' });
